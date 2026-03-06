@@ -1,7 +1,7 @@
 'use client'
 import { MLRSummary } from '@/lib/supabase'
 
-interface Props { data: MLRSummary[] }
+interface Props { data: MLRSummary[]; mode: 'actual' | 'paid' }
 
 function fmt(n: number) {
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(1)}M`
@@ -9,18 +9,21 @@ function fmt(n: number) {
   return `₦${n.toFixed(0)}`
 }
 
-export default function SummaryCards({ data }: Props) {
+export default function SummaryCards({ data, mode }: Props) {
   const withDebit = data.filter(d => d.total_debit_amount > 0)
 
-  const above75   = withDebit.filter(d => d.actual_mlr > 0.75).length
+  const mlrKey   = mode === 'actual' ? 'actual_mlr' : 'claims_paid_mlr'
+  const costKey  = mode === 'actual' ? 'total_actual_medical_cost' : 'claims_paid_cost'
+
+  const above75   = withDebit.filter(d => d[mlrKey] > 0.75).length
   const avgMlr    = withDebit.length
-    ? withDebit.reduce((s, d) => s + d.actual_mlr, 0) / withDebit.length
+    ? withDebit.reduce((s, d) => s + d[mlrKey], 0) / withDebit.length
     : 0
-  const totalClaims = withDebit.reduce((s, d) => s + d.total_actual_medical_cost, 0)
+  const totalClaims = withDebit.reduce((s, d) => s + d[costKey], 0)
 
   const cards = [
     {
-      label:    'Clients Above 75% MLR',
+      label:    `Clients Above 75% ${mode === 'actual' ? 'Actual' : 'Claims-Paid'} MLR`,
       value:    String(above75),
       sub:      `out of ${withDebit.length} active clients`,
       icon:     'warning',
@@ -28,7 +31,7 @@ export default function SummaryCards({ data }: Props) {
       iconColor:'text-amber-500',
     },
     {
-      label:    'Portfolio Average MLR',
+      label:    `Portfolio Average ${mode === 'actual' ? 'Actual' : 'Claims-Paid'} MLR`,
       value:    `${(avgMlr * 100).toFixed(1)}%`,
       sub:      'Break-even threshold: 75.0%',
       icon:     'insights',
@@ -37,9 +40,9 @@ export default function SummaryCards({ data }: Props) {
       valueColor: avgMlr > 0.75 ? 'text-rose-500' : avgMlr > 0.70 ? 'text-amber-500' : 'text-emerald-600',
     },
     {
-      label:    'Total Medical Cost',
+      label:    mode === 'actual' ? 'Total Medical Cost' : 'Total Claims Paid',
       value:    fmt(totalClaims),
-      sub:      'Actual claims + unclaimed PA',
+      sub:      mode === 'actual' ? 'Actual claims + unclaimed PA' : 'Claims anchored on date submitted',
       icon:     'payments',
       iconBg:   'bg-emerald-500/10',
       iconColor:'text-emerald-500',

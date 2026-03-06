@@ -3,8 +3,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const nav = [
-  { href: '/mlr',        icon: 'monitoring',      label: 'MLR Module' },
-  { href: '/claims',     icon: 'description',     label: 'Claims' },
+  { href: '/mlr',        icon: 'monitoring',      label: 'MLR Data' },
+  { href: '/claims',     icon: 'description',     label: 'Premium Analysis' },
   { href: '/clients',    icon: 'group',            label: 'Clients' },
   { href: '/enrollment', icon: 'person_add',      label: 'Enrollment' },
   { href: '/reporting',  icon: 'bar_chart',        label: 'Reporting' },

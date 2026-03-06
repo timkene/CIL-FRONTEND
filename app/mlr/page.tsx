@@ -78,7 +78,7 @@ export default function MLRPage() {
           ))}
         </div>
 
-        <SummaryCards data={data} />
+        <SummaryCards data={data} mode={mode} />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           <BinsChart data={data} mode={mode} />
@@ -87,11 +87,15 @@ export default function MLRPage() {
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
             <h4 className="text-lg font-bold mb-4">MLR Breakdown</h4>
             <div className="space-y-5 flex-1">
-              {[
-                { label: 'LOSS (> 75%)',      count: data.filter(d => d.actual_mlr > 0.75).length,              color: 'bg-rose-500' },
-                { label: 'WARNING (70–75%)',   count: data.filter(d => d.actual_mlr > 0.70 && d.actual_mlr <= 0.75).length, color: 'bg-amber-500' },
-                { label: 'PROFITABLE (≤ 70%)', count: data.filter(d => d.actual_mlr <= 0.70 && d.total_debit_amount > 0).length, color: 'bg-emerald-500' },
-              ].map(item => (
+              {(() => {
+                const mlrKey = mode === 'actual' ? 'actual_mlr' : 'claims_paid_mlr'
+                const active = data.filter(d => d.total_debit_amount > 0)
+                return [
+                  { label: 'LOSS (> 75%)',       count: active.filter(d => d[mlrKey] > 0.75).length,                         color: 'bg-rose-500' },
+                  { label: 'WARNING (70–75%)',    count: active.filter(d => d[mlrKey] > 0.70 && d[mlrKey] <= 0.75).length,   color: 'bg-amber-500' },
+                  { label: 'PROFITABLE (≤ 70%)',  count: active.filter(d => d[mlrKey] <= 0.70).length,                       color: 'bg-emerald-500' },
+                ]
+              })().map(item => (
                 <div key={item.label} className="space-y-1.5">
                   <div className="flex justify-between text-sm font-medium">
                     <span>{item.label}</span>
@@ -100,7 +104,7 @@ export default function MLRPage() {
                   <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                     <div
                       className={`h-full ${item.color} rounded-full`}
-                      style={{ width: `${data.filter(d => d.total_debit_amount > 0).length ? (item.count / data.filter(d => d.total_debit_amount > 0).length) * 100 : 0}%` }}
+                      style={{ width: `${data.filter(d => d.total_debit_amount > 0).length ? Math.round((item.count / data.filter(d => d.total_debit_amount > 0).length) * 100) : 0}%` }}
                     />
                   </div>
                 </div>
