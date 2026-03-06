@@ -16,6 +16,24 @@ function StatusBadge({ mlr }: { mlr: number }) {
   return <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 font-bold text-xs">{(mlr * 100).toFixed(1)}%</span>
 }
 
+function UtilizationBadge({ pct }: { pct: number | null }) {
+  if (pct === null) return <span className="text-slate-400 text-xs">—</span>
+  if (pct > 75) return <span className="px-2 py-1 rounded bg-rose-500/10 text-rose-600 font-bold text-xs">{pct.toFixed(1)}%</span>
+  if (pct >= 50) return <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-600 font-bold text-xs">{pct.toFixed(1)}%</span>
+  return <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 font-bold text-xs">{pct.toFixed(1)}%</span>
+}
+
+function MarginBadge({ premiumPmpm, actualPmpm }: { premiumPmpm: number; actualPmpm: number }) {
+  const margin = premiumPmpm - actualPmpm
+  const sign   = margin >= 0 ? '+' : ''
+  const color  = margin >= 0 ? 'text-emerald-600' : 'text-rose-600'
+  return (
+    <span className={`font-bold text-sm ${color} whitespace-nowrap`}>
+      {sign}{fmt(margin)}
+    </span>
+  )
+}
+
 export default function ClientsTable({ data, mode }: Props) {
   const [search, setSearch] = useState('')
 
@@ -59,8 +77,8 @@ export default function ClientsTable({ data, mode }: Props) {
               <th className="px-6 py-3">Medical Cost</th>
               <th className="px-6 py-3 text-center">Actual MLR</th>
               <th className="px-6 py-3 text-center">Claims-Paid MLR</th>
-              <th className="px-6 py-3">PMPM</th>
-              <th className="px-6 py-3">Members</th>
+              <th className="px-6 py-3">PMPM Margin</th>
+              <th className="px-6 py-3 text-center">Utilization</th>
               <th className="px-6 py-3">Status</th>
             </tr>
           </thead>
@@ -76,8 +94,8 @@ export default function ClientsTable({ data, mode }: Props) {
                 <td className="px-6 py-4 whitespace-nowrap">{fmt(r.total_actual_medical_cost)}</td>
                 <td className="px-6 py-4 text-center"><StatusBadge mlr={r.actual_mlr} /></td>
                 <td className="px-6 py-4 text-center"><StatusBadge mlr={r.claims_paid_mlr} /></td>
-                <td className="px-6 py-4 whitespace-nowrap">{fmt(r.actual_medical_cost_pmpm)}</td>
-                <td className="px-6 py-4">{r.enrolled_members.toLocaleString()}</td>
+                <td className="px-6 py-4"><MarginBadge premiumPmpm={r.premium_pmpm} actualPmpm={r.actual_medical_cost_pmpm} /></td>
+                <td className="px-6 py-4 text-center"><UtilizationBadge pct={r.member_utilization_pct} /></td>
                 <td className="px-6 py-4">
                   <span className={`text-xs font-bold px-2 py-1 rounded ${
                     r.mlr_status === 'LOSS'       ? 'bg-rose-100 text-rose-700' :

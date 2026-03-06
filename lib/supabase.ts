@@ -22,6 +22,8 @@ export interface MLRSummary {
   claims_paid_mlr_pct:            string
   mlr_status:                     string
   enrolled_members:               number
+  utilized_members:               number | null
+  member_utilization_pct:         number | null
   contract_months:                number
   elapsed_months:                 number
   member_months:                  number
