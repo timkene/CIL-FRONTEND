@@ -279,9 +279,15 @@ export default function ClientAnalysisPage() {
     setDetailLoading(false)
   }
 
-  // run custom period analysis via API
+  const mlrApiUrl = process.env.NEXT_PUBLIC_MLR_API_URL ?? ''
+
+  // run custom period analysis via API (browser → MLR API directly, CORS enabled)
   async function runCustomAnalysis() {
     if (!customName.trim() || !customStart || !customEnd) return
+    if (!mlrApiUrl) {
+      setApiError('NEXT_PUBLIC_MLR_API_URL is not set. Add it to your .env.local (e.g. http://localhost:8004) and restart the dev server.')
+      return
+    }
     setApiError(null)
     setResult(null)
     setApiLoading(true)
@@ -292,15 +298,15 @@ export default function ClientAnalysisPage() {
         start_date:  customStart,
         end_date:    customEnd,
       })
-      const res = await fetch(`/api/mlr?${params}`)
+      const res = await fetch(`${mlrApiUrl}/mlr/summary?${params}`)
       const data = await res.json()
       if (!res.ok) {
-        setApiError(data.error ?? 'Unknown error from API')
+        setApiError(data.detail ?? data.error ?? `API returned ${res.status}`)
       } else {
         setResult(mapApiResponse(data, customName.trim()))
       }
-    } catch (e) {
-      setApiError(String(e))
+    } catch {
+      setApiError(`Cannot reach MLR API at ${mlrApiUrl}. Make sure it is running (uvicorn apis.mlr.main:app --port 8004).`)
     } finally {
       setApiLoading(false)
     }
@@ -496,7 +502,10 @@ export default function ClientAnalysisPage() {
                     {apiLoading ? 'Running...' : 'Run Analysis'}
                   </button>
                   <p className="text-xs text-slate-400">
-                    Runs a live query against the DuckDB database. Requires the MLR API to be running.
+                    {mlrApiUrl
+                      ? <>Live query via <span className="font-mono text-slate-500">{mlrApiUrl}</span></>
+                      : <span className="text-amber-600 font-medium">Set NEXT_PUBLIC_MLR_API_URL in .env.local to enable this feature</span>
+                    }
                   </p>
                 </div>
                 {apiError && (
