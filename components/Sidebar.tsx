@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 const nav = [
   { href: '/mlr',        icon: 'monitoring',      label: 'MLR Data' },
   { href: '/claims',     icon: 'description',     label: 'Premium Analysis' },
-  { href: '/clients',    icon: 'group',            label: 'Clients' },
+  { href: '/clients',    icon: 'person_search',    label: 'Client Analysis' },
   { href: '/enrollment', icon: 'person_add',      label: 'Enrollment' },
   { href: '/reporting',  icon: 'bar_chart',        label: 'Reporting' },
   { href: '/settings',   icon: 'settings',         label: 'Settings' },
