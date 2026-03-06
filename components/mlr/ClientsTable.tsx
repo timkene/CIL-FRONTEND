@@ -56,7 +56,7 @@ export default function ClientsTable({ data, mode }: Props) {
           </p>
         </div>
         <div className="relative">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
+          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 leading-none" style={{fontSize:'18px'}}>search</span>
           <input
             className="pl-9 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-[#137fec] w-56 outline-none"
             placeholder="Search clients..."
