@@ -1,0 +1,102 @@
+'use client'
+import { useState } from 'react'
+import { MLRSummary } from '@/lib/supabase'
+
+interface Props { data: MLRSummary[]; mode: 'actual' | 'paid' }
+
+function fmt(n: number) {
+  if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(2)}M`
+  if (n >= 1_000)     return `₦${(n / 1_000).toFixed(0)}K`
+  return `₦${n.toFixed(0)}`
+}
+
+function StatusBadge({ mlr }: { mlr: number }) {
+  if (mlr > 0.75) return <span className="px-2 py-1 rounded bg-rose-500/10 text-rose-600 font-bold text-xs">{(mlr * 100).toFixed(1)}%</span>
+  if (mlr > 0.70) return <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-600 font-bold text-xs">{(mlr * 100).toFixed(1)}%</span>
+  return <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 font-bold text-xs">{(mlr * 100).toFixed(1)}%</span>
+}
+
+export default function ClientsTable({ data, mode }: Props) {
+  const [search, setSearch] = useState('')
+
+  const rows = data
+    .filter(d => d.total_debit_amount > 0)
+    .filter(d => d.group_name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const ma = mode === 'actual' ? a.actual_mlr : a.claims_paid_mlr
+      const mb = mode === 'actual' ? b.actual_mlr : b.claims_paid_mlr
+      return mb - ma
+    })
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+        <div>
+          <h4 className="text-lg font-bold">All Clients — MLR Ranking</h4>
+          <p className="text-sm text-slate-500">
+            Sorted by {mode === 'actual' ? 'Actual' : 'Claims-Paid'} MLR · {rows.length} clients
+          </p>
+        </div>
+        <div className="relative">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
+          <input
+            className="pl-9 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-[#137fec] w-56 outline-none"
+            placeholder="Search clients..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider">
+              <th className="px-6 py-3">#</th>
+              <th className="px-6 py-3">Client</th>
+              <th className="px-6 py-3">Period</th>
+              <th className="px-6 py-3">Debit</th>
+              <th className="px-6 py-3">Medical Cost</th>
+              <th className="px-6 py-3 text-center">Actual MLR</th>
+              <th className="px-6 py-3 text-center">Claims-Paid MLR</th>
+              <th className="px-6 py-3">PMPM</th>
+              <th className="px-6 py-3">Members</th>
+              <th className="px-6 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((r, i) => (
+              <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-6 py-4 text-slate-400 font-medium">{i + 1}</td>
+                <td className="px-6 py-4 font-bold">{r.group_name.trim()}</td>
+                <td className="px-6 py-4 text-slate-500 text-xs whitespace-nowrap">
+                  {r.start_date} → {r.end_date}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">{fmt(r.total_debit_amount)}</td>
+                <td className="px-6 py-4 whitespace-nowrap">{fmt(r.total_actual_medical_cost)}</td>
+                <td className="px-6 py-4 text-center"><StatusBadge mlr={r.actual_mlr} /></td>
+                <td className="px-6 py-4 text-center"><StatusBadge mlr={r.claims_paid_mlr} /></td>
+                <td className="px-6 py-4 whitespace-nowrap">{fmt(r.actual_medical_cost_pmpm)}</td>
+                <td className="px-6 py-4">{r.enrolled_members.toLocaleString()}</td>
+                <td className="px-6 py-4">
+                  <span className={`text-xs font-bold px-2 py-1 rounded ${
+                    r.mlr_status === 'LOSS'       ? 'bg-rose-100 text-rose-700' :
+                    r.mlr_status === 'WARNING'    ? 'bg-amber-100 text-amber-700' :
+                                                    'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {r.mlr_status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={10} className="px-6 py-12 text-center text-slate-400">No clients found</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
