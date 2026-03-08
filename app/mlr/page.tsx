@@ -50,16 +50,16 @@ export default function MLRPage() {
   return (
     <>
       {/* Header */}
-      <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-8 sticky top-0 z-10">
+      <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between pl-14 pr-4 md:px-8 sticky top-0 z-10">
         <h2 className="text-xl font-bold tracking-tight">MLR Dashboard</h2>
-        <div className="flex items-center gap-3 text-xs text-slate-500">
+        <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500">
           <span className="material-symbols-outlined text-sm">schedule</span>
           Last updated: {data[0]?.computed_at ? new Date(data[0].computed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
         </div>
       </header>
 
       {/* Content */}
-      <div className="p-8 space-y-8">
+      <div className="p-4 md:p-8 space-y-6 md:space-y-8">
 
         {/* Tabs */}
         <div className="border-b border-slate-200 flex gap-8">

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Manrope } from 'next/font/google'
 import './globals.css'
-import Sidebar from '@/components/Sidebar'
+import AppShell from '@/components/AppShell'
 
 const manrope = Manrope({ subsets: ['latin'] })
 
@@ -14,12 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={`${manrope.className} bg-[#f6f7f8] text-slate-900`}>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 ml-64 flex flex-col min-h-screen">
-            {children}
-          </main>
-        </div>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   )

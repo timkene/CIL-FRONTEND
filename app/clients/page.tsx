@@ -286,10 +286,10 @@ export default function ClientAnalysisPage() {
 
   return (
     <>
-      <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-8 sticky top-0 z-10">
+      <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between pl-14 pr-4 md:px-8 sticky top-0 z-10">
         <h2 className="text-xl font-bold tracking-tight">Client Analysis</h2>
         {result && (
-          <div className="flex items-center gap-2 text-xs text-slate-500">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
             <span className="material-symbols-outlined" style={{fontSize:'16px'}}>calendar_today</span>
             {result.start_date} → {result.end_date}
             <span className={`ml-2 px-2 py-0.5 rounded font-bold ${
@@ -301,7 +301,7 @@ export default function ClientAnalysisPage() {
         )}
       </header>
 
-      <div className="p-8 space-y-8">
+      <div className="p-4 md:p-8 space-y-6 md:space-y-8">
 
         {/* Search */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">

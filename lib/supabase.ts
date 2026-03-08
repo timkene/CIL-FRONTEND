@@ -5,6 +5,25 @@ const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(url, anon)
 
+export interface Staff {
+  id:              number
+  first_name:      string
+  last_name:       string
+  email:           string
+  department:      string
+  password:        string
+  status:          'ACTIVE' | 'INACTIVE'
+  session_version: number
+  created_at:      string
+  updated_at:      string
+}
+
+export interface DeptPermission {
+  id:         number
+  department: string
+  modules:    string[]   // ['ALL'] or ['MLR Data', 'Premium Analysis', ...]
+}
+
 export interface MLRSummary {
   id:                             number
   group_id:                       number

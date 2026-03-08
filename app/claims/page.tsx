@@ -12,6 +12,12 @@ const DEBIT_BINS = [
   { label: '> ₦100M',         min: 100_000_001, max: Infinity },
 ]
 
+const CONTRACT_BINS = [
+  { label: '≤ 3 Months Left',  minMo: 0, maxMo: 3 },
+  { label: '4 – 6 Months Left', minMo: 4, maxMo: 6 },
+  { label: '7 – 9 Months Left', minMo: 7, maxMo: 9 },
+]
+
 function fmt(n: number) {
   if (n >= 1_000_000_000) return `₦${(n / 1_000_000_000).toFixed(1)}B`
   if (n >= 1_000_000)     return `₦${(n / 1_000_000).toFixed(1)}M`
@@ -104,9 +110,9 @@ export default function PremiumAnalysisPage() {
   return (
     <>
       {/* Header */}
-      <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-8 sticky top-0 z-10">
+      <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between pl-14 pr-4 md:px-8 sticky top-0 z-10">
         <h2 className="text-xl font-bold tracking-tight">Premium Analysis</h2>
-        <div className="flex items-center gap-3 text-xs text-slate-500">
+        <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500">
           <span className="material-symbols-outlined text-sm">schedule</span>
           Last updated: {data[0]?.computed_at
             ? new Date(data[0].computed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -114,7 +120,7 @@ export default function PremiumAnalysisPage() {
         </div>
       </header>
 
-      <div className="p-8 space-y-8">
+      <div className="p-4 md:p-8 space-y-6 md:space-y-8">
 
         {/* Summary cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -164,6 +170,45 @@ export default function PremiumAnalysisPage() {
             const clients = data.filter(
               d => d.total_debit_amount >= bin.min && d.total_debit_amount <= bin.max
             )
+            return (
+              <DebitBinChart
+                key={bin.label}
+                label={bin.label}
+                clients={clients}
+              />
+            )
+          })}
+        </div>
+
+        {/* ── MLR Distribution by Contract Left ───────────────────────── */}
+        <div className="pt-4 border-t border-slate-100">
+          <h3 className="text-lg font-bold">MLR Distribution by Contract Left</h3>
+          <p className="text-sm text-slate-500 mt-1">
+            Clients grouped by months remaining on their contract —
+            <span className="text-[#137fec] font-semibold"> blue = Actual MLR</span>,
+            <span className="text-slate-400 font-semibold"> grey = Claims-Paid MLR</span>
+          </p>
+        </div>
+
+        <div className="flex items-center gap-6 text-xs font-medium text-slate-600 -mt-4">
+          {[
+            { color: '#22c55e', label: '< 50% — Profitable' },
+            { color: '#f59e0b', label: '50–75% — Watch Zone' },
+            { color: '#ef4444', label: '> 75% — Loss Territory' },
+          ].map(l => (
+            <span key={l.label} className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full" style={{ background: l.color }} />
+              {l.label}
+            </span>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {CONTRACT_BINS.map(bin => {
+            const clients = data.filter(d => {
+              const remaining = d.contract_months - d.elapsed_months
+              return remaining >= bin.minMo && remaining <= bin.maxMo
+            })
             return (
               <DebitBinChart
                 key={bin.label}
