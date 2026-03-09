@@ -54,7 +54,7 @@ export default function MLRPage() {
         <h2 className="text-xl font-bold tracking-tight">MLR Dashboard</h2>
         <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500">
           <span className="material-symbols-outlined text-sm">schedule</span>
-          Last updated: {data[0]?.computed_at ? new Date(data[0].computed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+          Last updated: {data.length ? new Date(data.reduce((max, r) => r.computed_at > max ? r.computed_at : max, data[0].computed_at)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
         </div>
       </header>
 
