@@ -53,8 +53,11 @@ export default function RenewalPage() {
   const within30 = reports.filter(r => r.days_to_expiry <= 30).length
   const within60 = reports.filter(r => r.days_to_expiry > 30 && r.days_to_expiry <= 60).length
   const within90 = reports.filter(r => r.days_to_expiry > 60).length
-  const lastGenerated = reports[0]?.generated_at
-    ? new Date(reports[0].generated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const latestTs = reports.length
+    ? reports.reduce((max, r) => r.generated_at > max ? r.generated_at : max, reports[0].generated_at)
+    : null
+  const lastGenerated = latestTs
+    ? new Date(latestTs).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     : null
 
   if (loading) return (
