@@ -34,14 +34,28 @@ export default function RenewalPage() {
   const [search,   setSearch]   = useState('')
 
   useEffect(() => {
+    // First get the latest week_number + week_year
     supabase
       .from('renewal_reports')
-      .select('*')
-      .order('days_to_expiry', { ascending: true })
-      .then(({ data, error: err }) => {
-        if (err) { setError(err.message); setLoading(false); return }
-        setReports(data ?? [])
-        setLoading(false)
+      .select('week_number, week_year')
+      .order('week_year', { ascending: false })
+      .order('week_number', { ascending: false })
+      .limit(1)
+      .then(({ data: wk }) => {
+        if (!wk?.length) { setLoading(false); return }
+        const { week_number, week_year } = wk[0]
+        // Then fetch only that week's reports
+        supabase
+          .from('renewal_reports')
+          .select('*')
+          .eq('week_number', week_number)
+          .eq('week_year', week_year)
+          .order('days_to_expiry', { ascending: true })
+          .then(({ data, error: err }) => {
+            if (err) { setError(err.message); setLoading(false); return }
+            setReports(data ?? [])
+            setLoading(false)
+          })
       })
   }, [])
 
