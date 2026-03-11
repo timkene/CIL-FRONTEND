@@ -18,8 +18,9 @@ const PATH_MODULE: Record<string, string> = {
   '/claims':           'Premium Analysis',
   '/clients':          'Client Analysis',
   '/renewal':          'Renewal Plan',
-  '/providers/fraud':  'Provider Fraud',
-  '/admin':            'Admin',
+  '/providers/fraud':        'Provider Fraud',
+  '/providers/band-mapping': 'Enrollee Provider Mapping',
+  '/admin':                  'Admin',
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
