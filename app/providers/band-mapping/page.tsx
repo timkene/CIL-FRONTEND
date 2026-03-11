@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/components/AppShell'
 import { isAdmin } from '@/lib/auth'
@@ -48,6 +48,22 @@ function parseProviders(raw: string | null): string[] {
   try { return JSON.parse(raw) } catch { return [raw] }
 }
 
+function effectivePrice(row: { individual_price: number | null; family_price: number | null }): number | null {
+  if (row.individual_price != null && row.individual_price > 0) return row.individual_price
+  return row.family_price
+}
+
+function inPriceRange(
+  row: { individual_price: number | null; family_price: number | null },
+  minStr: string, maxStr: string
+): boolean {
+  const price = effectivePrice(row)
+  if (price == null) return true
+  if (minStr && price < Number(minStr)) return false
+  if (maxStr && price > Number(maxStr)) return false
+  return true
+}
+
 function downloadCSV(data: Record<string, unknown>[], filename: string) {
   if (!data.length) return
   const headers = Object.keys(data[0])
@@ -60,9 +76,23 @@ function downloadCSV(data: Record<string, unknown>[], filename: string) {
   URL.revokeObjectURL(url)
 }
 
-function effectivePrice(row: { individual_price: number | null; family_price: number | null }): number | null {
-  if (row.individual_price != null && row.individual_price > 0) return row.individual_price
-  return row.family_price
+// Fetch all rows from a Supabase table (works around 1000-row default limit)
+async function fetchAll<T>(table: string, order: { column: string; ascending: boolean }): Promise<T[]> {
+  const PAGE = 1000
+  const results: T[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order(order.column, { ascending: order.ascending })
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    results.push(...(data ?? []))
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return results
 }
 
 // ── UI atoms ──────────────────────────────────────────────────────────────────
@@ -91,6 +121,144 @@ function AllowedBands({ bands }: { bands: string | null }) {
   )
 }
 
+// ── Provider accordion for Mapping Pool ───────────────────────────────────────
+interface MappingProviderGroup {
+  providerName: string
+  providerId: string | null
+  band: string | null
+  enrollees: MappingFlag[]
+}
+
+function MappingProviderCard({ group, defaultOpen }: { group: MappingProviderGroup; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? false)
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Header row */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <BandBadge band={group.band} />
+          <div className="min-w-0">
+            <span className="font-semibold text-slate-800 block truncate">{group.providerName}</span>
+            {group.providerId && (
+              <span className="text-xs text-slate-400 font-mono">ID: {group.providerId}</span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0 ml-4">
+          <span className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+            {group.enrollees.length} enrollee{group.enrollees.length !== 1 ? 's' : ''}
+          </span>
+          <span className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+        </div>
+      </button>
+
+      {/* Enrollee table */}
+      {open && (
+        <div className="border-t border-slate-100 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                {['Enrollee', 'Plan', 'Price (Ind / Fam)', 'Allowed Bands', 'Reason'].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {group.enrollees.map(r => (
+                <tr key={r.id} className="hover:bg-rose-50/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-800">{r.full_name || '—'}</div>
+                    <div className="text-xs text-slate-400 font-mono">{r.enrollee_id}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-slate-700">{r.plan_name || '—'}</div>
+                    {r.plan_code && <div className="text-xs text-slate-400">{r.plan_code}</div>}
+                  </td>
+                  <td className="px-4 py-3 tabular-nums whitespace-nowrap">
+                    <div>{fmt(r.individual_price)}</div>
+                    <div className="text-xs text-slate-400">{fmt(r.family_price)}</div>
+                  </td>
+                  <td className="px-4 py-3"><AllowedBands bands={r.allowed_bands} /></td>
+                  <td className="px-4 py-3 text-xs text-slate-500 max-w-[220px]">{r.flag_reason || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Provider accordion for Visit Pool ─────────────────────────────────────────
+interface VisitProviderGroup {
+  providerName: string
+  enrollees: VisitFlag[]
+  totalVisits: number
+}
+
+function VisitProviderCard({ group, defaultOpen }: { group: VisitProviderGroup; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? false)
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors text-left"
+      >
+        <div className="min-w-0">
+          <span className="font-semibold text-slate-800 block truncate">{group.providerName}</span>
+          <span className="text-xs text-slate-400">{group.totalVisits} total visit{group.totalVisits !== 1 ? 's' : ''} across these enrollees</span>
+        </div>
+        <div className="flex items-center gap-3 shrink-0 ml-4">
+          <span className="text-sm font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+            {group.enrollees.length} enrollee{group.enrollees.length !== 1 ? 's' : ''}
+          </span>
+          <span className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="border-t border-slate-100 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                {['Enrollee', 'Plan', 'Price (Ind / Fam)', 'Allowed Bands', 'Higher-Band Visits', 'Last Visit'].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {group.enrollees.map(r => (
+                <tr key={r.id} className="hover:bg-amber-50/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-800">{r.full_name || '—'}</div>
+                    <div className="text-xs text-slate-400 font-mono">{r.enrollee_id}</div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">{r.plan_name || '—'}</td>
+                  <td className="px-4 py-3 tabular-nums whitespace-nowrap">
+                    <div>{fmt(r.individual_price)}</div>
+                    <div className="text-xs text-slate-400">{fmt(r.family_price)}</div>
+                  </td>
+                  <td className="px-4 py-3"><AllowedBands bands={r.allowed_bands} /></td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-rose-100 text-rose-700 font-bold text-sm">
+                      {r.visit_count_higher_band}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{r.last_visit_date || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function ProviderBandMappingPage() {
   const { user }  = useAuth()
@@ -103,14 +271,11 @@ export default function ProviderBandMappingPage() {
   const [error,       setError]       = useState<string | null>(null)
   const [scannedAt,   setScannedAt]   = useState<string | null>(null)
 
-  // Mapping pool filters
-  const [mSearch,   setMSearch]   = useState('')
+  // Filters
   const [mProvider, setMProvider] = useState('')
   const [mMinPrice, setMMinPrice] = useState('')
   const [mMaxPrice, setMMaxPrice] = useState('')
 
-  // Visit pool filters
-  const [vSearch,   setVSearch]   = useState('')
   const [vProvider, setVProvider] = useState('')
   const [vMinPrice, setVMinPrice] = useState('')
   const [vMaxPrice, setVMaxPrice] = useState('')
@@ -120,46 +285,65 @@ export default function ProviderBandMappingPage() {
   async function load() {
     setLoading(true)
     setError(null)
-    const [mRes, vRes] = await Promise.all([
-      supabase.from('enrollee_provider_mapping_flags').select('*').order('scanned_at', { ascending: false }),
-      supabase.from('enrollee_provider_visit_flags').select('*').order('visit_count_higher_band', { ascending: false }),
-    ])
-    if (mRes.error || vRes.error) {
-      setError(mRes.error?.message ?? vRes.error?.message ?? 'Failed to load')
+    try {
+      const [mData, vData] = await Promise.all([
+        fetchAll<MappingFlag>('enrollee_provider_mapping_flags', { column: 'scanned_at', ascending: false }),
+        fetchAll<VisitFlag>('enrollee_provider_visit_flags',    { column: 'visit_count_higher_band', ascending: false }),
+      ])
+      setMappingRows(mData)
+      setVisitRows(vData)
+      if (mData.length) setScannedAt(mData[0].scanned_at)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load')
+    } finally {
       setLoading(false)
-      return
     }
-    setMappingRows(mRes.data ?? [])
-    setVisitRows(vRes.data ?? [])
-    if ((mRes.data ?? []).length) setScannedAt(mRes.data![0].scanned_at)
-    setLoading(false)
   }
 
-  // ── Filtering helpers ────────────────────────────────────────────────────────
-  function inPriceRange(row: { individual_price: number | null; family_price: number | null }, minStr: string, maxStr: string): boolean {
-    const price = effectivePrice(row)
-    if (price == null) return true
-    if (minStr && price < Number(minStr)) return false
-    if (maxStr && price > Number(maxStr)) return false
-    return true
-  }
+  // ── Group mapping rows by provider ───────────────────────────────────────────
+  const mappingGroups = useMemo<MappingProviderGroup[]>(() => {
+    const filtered = mappingRows.filter(r => {
+      const p = mProvider.toLowerCase()
+      return (!p || (r.mapped_provider_name ?? '').toLowerCase().includes(p))
+          && inPriceRange(r, mMinPrice, mMaxPrice)
+    })
+    const map = new Map<string, MappingProviderGroup>()
+    for (const r of filtered) {
+      const key = r.mapped_provider_name ?? 'Unknown Provider'
+      if (!map.has(key)) {
+        map.set(key, { providerName: key, providerId: r.mapped_provider_id, band: r.mapped_provider_band, enrollees: [] })
+      }
+      map.get(key)!.enrollees.push(r)
+    }
+    return [...map.values()].sort((a, b) => b.enrollees.length - a.enrollees.length)
+  }, [mappingRows, mProvider, mMinPrice, mMaxPrice])
 
-  const filteredMapping = mappingRows.filter(r => {
-    const s = mSearch.toLowerCase()
-    const p = mProvider.toLowerCase()
-    return (!s || (r.full_name ?? '').toLowerCase().includes(s) || r.enrollee_id.toLowerCase().includes(s))
-        && (!p || (r.mapped_provider_name ?? '').toLowerCase().includes(p))
-        && inPriceRange(r, mMinPrice, mMaxPrice)
-  })
-
-  const filteredVisit = visitRows.filter(r => {
-    const s = vSearch.toLowerCase()
-    const p = vProvider.toLowerCase()
-    const provs = parseProviders(r.higher_band_providers)
-    return (!s || (r.full_name ?? '').toLowerCase().includes(s) || r.enrollee_id.toLowerCase().includes(s))
-        && (!p || provs.some(pv => pv.toLowerCase().includes(p)))
-        && inPriceRange(r, vMinPrice, vMaxPrice)
-  })
+  // ── Group visit rows by provider (invert: provider → enrollees) ───────────────
+  const visitGroups = useMemo<VisitProviderGroup[]>(() => {
+    const filtered = visitRows.filter(r => {
+      const p = vProvider.toLowerCase()
+      const provs = parseProviders(r.higher_band_providers)
+      return (!p || provs.some(pv => pv.toLowerCase().includes(p)))
+          && inPriceRange(r, vMinPrice, vMaxPrice)
+    })
+    const map = new Map<string, VisitProviderGroup>()
+    for (const r of filtered) {
+      const provs = parseProviders(r.higher_band_providers)
+      // Filter to just the matched provider if filter is active
+      const relevantProvs = vProvider
+        ? provs.filter(p => p.toLowerCase().includes(vProvider.toLowerCase()))
+        : provs
+      for (const prov of relevantProvs) {
+        if (!map.has(prov)) {
+          map.set(prov, { providerName: prov, enrollees: [], totalVisits: 0 })
+        }
+        const g = map.get(prov)!
+        g.enrollees.push(r)
+        g.totalVisits += r.visit_count_higher_band
+      }
+    }
+    return [...map.values()].sort((a, b) => b.enrollees.length - a.enrollees.length)
+  }, [visitRows, vProvider, vMinPrice, vMaxPrice])
 
   // ── Loading / error ───────────────────────────────────────────────────────────
   if (loading) return (
@@ -220,10 +404,10 @@ export default function ProviderBandMappingPage() {
       <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 bg-white border border-slate-200 rounded-lg px-4 py-3">
         <span className="font-semibold text-slate-600">Band tiers:</span>
         {[
-          { band: 'D', label: 'Lowest  ₦0–81,779 ind',      color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-          { band: 'C', label: '₦81,800–117,244 ind',         color: 'bg-sky-100 text-sky-700 border-sky-200' },
-          { band: 'B', label: '₦117,245–344,999 ind',        color: 'bg-amber-100 text-amber-700 border-amber-200' },
-          { band: 'A', label: 'Highest  ₦345,000+ ind',      color: 'bg-rose-100 text-rose-700 border-rose-200' },
+          { band: 'D', label: 'Lowest  ₦0–81,779 ind',     color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+          { band: 'C', label: '₦81,800–117,244 ind',        color: 'bg-sky-100 text-sky-700 border-sky-200' },
+          { band: 'B', label: '₦117,245–344,999 ind',       color: 'bg-amber-100 text-amber-700 border-amber-200' },
+          { band: 'A', label: 'Highest  ₦345,000+ ind',     color: 'bg-rose-100 text-rose-700 border-rose-200' },
         ].map(({ band, label, color }) => (
           <span key={band} className="flex items-center gap-1.5">
             <span className={`inline-block font-bold px-2 py-0.5 rounded-full border text-xs ${color}`}>Band {band}</span>
@@ -253,11 +437,9 @@ export default function ProviderBandMappingPage() {
       {/* ── MAPPING POOL ─────────────────────────────────────────────────────── */}
       {tab === 'mapping-pool' && (
         <div className="space-y-4">
+          {/* Filters */}
           <div className="flex gap-3 flex-wrap">
-            <input type="text" placeholder="Search by name or enrollee ID…"
-              value={mSearch} onChange={e => setMSearch(e.target.value)}
-              className="flex-1 min-w-48 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-            <input type="text" placeholder="Filter by mapped provider…"
+            <input type="text" placeholder="Filter by provider name…"
               value={mProvider} onChange={e => setMProvider(e.target.value)}
               className="flex-1 min-w-48 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             <input type="number" placeholder="Min price (₦)"
@@ -268,7 +450,7 @@ export default function ProviderBandMappingPage() {
               className="w-36 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             {adminUser && (
               <button
-                onClick={() => downloadCSV(filteredMapping as unknown as Record<string, unknown>[], 'mapping_flags.csv')}
+                onClick={() => downloadCSV(mappingRows as unknown as Record<string, unknown>[], 'mapping_flags.csv')}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 transition-colors whitespace-nowrap"
               >
                 ↓ Download CSV
@@ -276,52 +458,20 @@ export default function ProviderBandMappingPage() {
             )}
           </div>
 
-          {filteredMapping.length === 0 ? (
+          <p className="text-xs text-slate-400">
+            {mappingGroups.length} provider{mappingGroups.length !== 1 ? 's' : ''} · {mappingGroups.reduce((s, g) => s + g.enrollees.length, 0)} enrollees shown
+          </p>
+
+          {mappingGroups.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
               <p className="text-4xl mb-3">✓</p>
               <p>{mappingRows.length === 0 ? 'No inappropriate provider mappings found.' : 'No results match your filters.'}</p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      {['Enrollee', 'Plan', 'Price (Ind / Fam)', 'Allowed Bands', 'Mapped Provider', 'Mapped Band', 'Reason'].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredMapping.map(r => (
-                      <tr key={r.id} className="hover:bg-rose-50/30 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-slate-800">{r.full_name || '—'}</div>
-                          <div className="text-xs text-slate-400 mt-0.5 font-mono">{r.enrollee_id}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="text-slate-700">{r.plan_name || '—'}</div>
-                          {r.plan_code && <div className="text-xs text-slate-400">{r.plan_code}</div>}
-                        </td>
-                        <td className="px-4 py-3 tabular-nums whitespace-nowrap">
-                          <div>{fmt(r.individual_price)}</div>
-                          <div className="text-xs text-slate-400">{fmt(r.family_price)}</div>
-                        </td>
-                        <td className="px-4 py-3"><AllowedBands bands={r.allowed_bands} /></td>
-                        <td className="px-4 py-3 max-w-[200px]">
-                          <div className="text-slate-700 line-clamp-2">{r.mapped_provider_name || '—'}</div>
-                          {r.mapped_provider_id && <div className="text-xs text-slate-400">ID: {r.mapped_provider_id}</div>}
-                        </td>
-                        <td className="px-4 py-3"><BandBadge band={r.mapped_provider_band} /></td>
-                        <td className="px-4 py-3 text-xs text-slate-500 max-w-[200px]">{r.flag_reason || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-400">
-                Showing {filteredMapping.length} of {mappingRows.length} records
-              </div>
+            <div className="space-y-3">
+              {mappingGroups.map(g => (
+                <MappingProviderCard key={g.providerName} group={g} />
+              ))}
             </div>
           )}
         </div>
@@ -330,10 +480,8 @@ export default function ProviderBandMappingPage() {
       {/* ── VISIT POOL ───────────────────────────────────────────────────────── */}
       {tab === 'visit-pool' && (
         <div className="space-y-4">
+          {/* Filters */}
           <div className="flex gap-3 flex-wrap">
-            <input type="text" placeholder="Search by name or enrollee ID…"
-              value={vSearch} onChange={e => setVSearch(e.target.value)}
-              className="flex-1 min-w-48 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             <input type="text" placeholder="Filter by provider visited…"
               value={vProvider} onChange={e => setVProvider(e.target.value)}
               className="flex-1 min-w-48 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
@@ -345,7 +493,7 @@ export default function ProviderBandMappingPage() {
               className="w-36 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             {adminUser && (
               <button
-                onClick={() => downloadCSV(filteredVisit as unknown as Record<string, unknown>[], 'visit_flags.csv')}
+                onClick={() => downloadCSV(visitRows as unknown as Record<string, unknown>[], 'visit_flags.csv')}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 transition-colors whitespace-nowrap"
               >
                 ↓ Download CSV
@@ -353,60 +501,20 @@ export default function ProviderBandMappingPage() {
             )}
           </div>
 
-          {filteredVisit.length === 0 ? (
+          <p className="text-xs text-slate-400">
+            {visitGroups.length} provider{visitGroups.length !== 1 ? 's' : ''} · {visitRows.length} enrollees total
+          </p>
+
+          {visitGroups.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
               <p className="text-4xl mb-3">✓</p>
               <p>{visitRows.length === 0 ? 'No inappropriate provider visits found.' : 'No results match your filters.'}</p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      {['Enrollee', 'Plan', 'Price (Ind / Fam)', 'Allowed Bands', 'Visits', 'Last Visit', 'Providers Used'].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredVisit.map(r => {
-                      const providers = parseProviders(r.higher_band_providers)
-                      return (
-                        <tr key={r.id} className="hover:bg-amber-50/30 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-slate-800">{r.full_name || '—'}</div>
-                            <div className="text-xs text-slate-400 mt-0.5 font-mono">{r.enrollee_id}</div>
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">{r.plan_name || '—'}</td>
-                          <td className="px-4 py-3 tabular-nums whitespace-nowrap">
-                            <div>{fmt(r.individual_price)}</div>
-                            <div className="text-xs text-slate-400">{fmt(r.family_price)}</div>
-                          </td>
-                          <td className="px-4 py-3"><AllowedBands bands={r.allowed_bands} /></td>
-                          <td className="px-4 py-3">
-                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-rose-100 text-rose-700 font-bold text-sm">
-                              {r.visit_count_higher_band}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{r.last_visit_date || '—'}</td>
-                          <td className="px-4 py-3 max-w-[220px]">
-                            <div className="flex flex-col gap-1">
-                              {providers.slice(0, 2).map(p => (
-                                <span key={p} className="text-xs text-slate-600 bg-slate-100 rounded px-2 py-0.5 line-clamp-1">{p}</span>
-                              ))}
-                              {providers.length > 2 && <span className="text-xs text-slate-400">+{providers.length - 2} more</span>}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-400">
-                Showing {filteredVisit.length} of {visitRows.length} records
-              </div>
+            <div className="space-y-3">
+              {visitGroups.map(g => (
+                <VisitProviderCard key={g.providerName} group={g} />
+              ))}
             </div>
           )}
         </div>
