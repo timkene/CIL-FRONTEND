@@ -18,6 +18,7 @@ interface MappingFlag {
   mapped_provider_name: string | null
   mapped_provider_band: string | null
   flag_reason: string | null
+  contract_end_date: string | null
   scanned_at: string
 }
 
@@ -32,6 +33,7 @@ interface VisitFlag {
   visit_count_higher_band: number
   last_visit_date: string | null
   higher_band_providers: string | null
+  contract_end_date: string | null
   scanned_at: string
 }
 
@@ -121,6 +123,24 @@ function AllowedBands({ bands }: { bands: string | null }) {
   )
 }
 
+function DaysToExpiry({ contractEndDate }: { contractEndDate: string | null }) {
+  if (!contractEndDate) return <span className="text-slate-400 text-xs">—</span>
+  const days = Math.ceil((new Date(contractEndDate).getTime() - Date.now()) / 86_400_000)
+  if (days < 0) {
+    return <span className="inline-block text-xs font-bold px-2 py-0.5 rounded-full border bg-slate-100 text-slate-500 border-slate-200">Expired</span>
+  }
+  const color = days <= 30
+    ? 'bg-rose-100 text-rose-700 border-rose-200'
+    : days <= 90
+    ? 'bg-amber-100 text-amber-700 border-amber-200'
+    : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+  return (
+    <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full border ${color}`}>
+      {days}d
+    </span>
+  )
+}
+
 // ── Provider accordion for Mapping Pool ───────────────────────────────────────
 interface MappingProviderGroup {
   providerName: string
@@ -161,7 +181,7 @@ function MappingProviderCard({ group, defaultOpen }: { group: MappingProviderGro
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Enrollee', 'Plan', 'Price (Ind / Fam)', 'Allowed Bands', 'Reason'].map(h => (
+                {['Enrollee', 'Plan', 'Price (Ind / Fam)', 'Allowed Bands', 'Days to Expiry', 'Reason'].map(h => (
                   <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -182,6 +202,12 @@ function MappingProviderCard({ group, defaultOpen }: { group: MappingProviderGro
                     <div className="text-xs text-slate-400">{fmt(r.family_price)}</div>
                   </td>
                   <td className="px-4 py-3"><AllowedBands bands={r.allowed_bands} /></td>
+                  <td className="px-4 py-3">
+                    <DaysToExpiry contractEndDate={r.contract_end_date} />
+                    {r.contract_end_date && (
+                      <div className="text-xs text-slate-400 mt-0.5">{r.contract_end_date}</div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-xs text-slate-500 max-w-[220px]">{r.flag_reason || '—'}</td>
                 </tr>
               ))}
@@ -225,7 +251,7 @@ function VisitProviderCard({ group, defaultOpen }: { group: VisitProviderGroup; 
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Enrollee', 'Plan', 'Price (Ind / Fam)', 'Allowed Bands', 'Higher-Band Visits', 'Last Visit'].map(h => (
+                {['Enrollee', 'Plan', 'Price (Ind / Fam)', 'Allowed Bands', 'Higher-Band Visits', 'Last Visit', 'Days to Expiry'].map(h => (
                   <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -249,6 +275,12 @@ function VisitProviderCard({ group, defaultOpen }: { group: VisitProviderGroup; 
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{r.last_visit_date || '—'}</td>
+                  <td className="px-4 py-3">
+                    <DaysToExpiry contractEndDate={r.contract_end_date} />
+                    {r.contract_end_date && (
+                      <div className="text-xs text-slate-400 mt-0.5">{r.contract_end_date}</div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
