@@ -149,31 +149,44 @@ interface MappingProviderGroup {
   enrollees: MappingFlag[]
 }
 
-function MappingProviderCard({ group, defaultOpen }: { group: MappingProviderGroup; defaultOpen?: boolean }) {
+function MappingProviderCard({
+  group, defaultOpen, selected, onToggle,
+}: {
+  group: MappingProviderGroup; defaultOpen?: boolean
+  selected: boolean; onToggle: () => void
+}) {
   const [open, setOpen] = useState(defaultOpen ?? false)
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-colors ${selected ? 'border-indigo-400 ring-1 ring-indigo-300' : 'border-slate-200'}`}>
       {/* Header row */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors text-left"
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <BandBadge band={group.band} />
-          <div className="min-w-0">
-            <span className="font-semibold text-slate-800 block truncate">{group.providerName}</span>
-            {group.providerId && (
-              <span className="text-xs text-slate-400 font-mono">ID: {group.providerId}</span>
-            )}
+      <div className="flex items-center px-4 py-4 hover:bg-slate-50 transition-colors">
+        <input
+          type="checkbox" checked={selected}
+          onChange={onToggle}
+          onClick={e => e.stopPropagation()}
+          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400 mr-3 shrink-0 cursor-pointer"
+        />
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="flex-1 flex items-center justify-between min-w-0 text-left"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <BandBadge band={group.band} />
+            <div className="min-w-0">
+              <span className="font-semibold text-slate-800 block truncate">{group.providerName}</span>
+              {group.providerId && (
+                <span className="text-xs text-slate-400 font-mono">ID: {group.providerId}</span>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3 shrink-0 ml-4">
-          <span className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full whitespace-nowrap">
-            {group.enrollees.length} enrollee{group.enrollees.length !== 1 ? 's' : ''}
-          </span>
-          <span className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
-        </div>
-      </button>
+          <div className="flex items-center gap-3 shrink-0 ml-4">
+            <span className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+              {group.enrollees.length} enrollee{group.enrollees.length !== 1 ? 's' : ''}
+            </span>
+            <span className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+          </div>
+        </button>
+      </div>
 
       {/* Enrollee table */}
       {open && (
@@ -226,25 +239,38 @@ interface VisitProviderGroup {
   totalVisits: number
 }
 
-function VisitProviderCard({ group, defaultOpen }: { group: VisitProviderGroup; defaultOpen?: boolean }) {
+function VisitProviderCard({
+  group, defaultOpen, selected, onToggle,
+}: {
+  group: VisitProviderGroup; defaultOpen?: boolean
+  selected: boolean; onToggle: () => void
+}) {
   const [open, setOpen] = useState(defaultOpen ?? false)
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors text-left"
-      >
-        <div className="min-w-0">
-          <span className="font-semibold text-slate-800 block truncate">{group.providerName}</span>
-          <span className="text-xs text-slate-400">{group.totalVisits} total visit{group.totalVisits !== 1 ? 's' : ''} across these enrollees</span>
-        </div>
-        <div className="flex items-center gap-3 shrink-0 ml-4">
-          <span className="text-sm font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full whitespace-nowrap">
-            {group.enrollees.length} enrollee{group.enrollees.length !== 1 ? 's' : ''}
-          </span>
-          <span className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
-        </div>
-      </button>
+    <div className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-colors ${selected ? 'border-indigo-400 ring-1 ring-indigo-300' : 'border-slate-200'}`}>
+      <div className="flex items-center px-4 py-4 hover:bg-slate-50 transition-colors">
+        <input
+          type="checkbox" checked={selected}
+          onChange={onToggle}
+          onClick={e => e.stopPropagation()}
+          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400 mr-3 shrink-0 cursor-pointer"
+        />
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="flex-1 flex items-center justify-between min-w-0 text-left"
+        >
+          <div className="min-w-0">
+            <span className="font-semibold text-slate-800 block truncate">{group.providerName}</span>
+            <span className="text-xs text-slate-400">{group.totalVisits} total visit{group.totalVisits !== 1 ? 's' : ''} across these enrollees</span>
+          </div>
+          <div className="flex items-center gap-3 shrink-0 ml-4">
+            <span className="text-sm font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+              {group.enrollees.length} enrollee{group.enrollees.length !== 1 ? 's' : ''}
+            </span>
+            <span className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+          </div>
+        </button>
+      </div>
 
       {open && (
         <div className="border-t border-slate-100 overflow-x-auto">
@@ -311,6 +337,26 @@ export default function ProviderBandMappingPage() {
   const [vProvider, setVProvider] = useState('')
   const [vMinPrice, setVMinPrice] = useState('')
   const [vMaxPrice, setVMaxPrice] = useState('')
+
+  // Selection
+  const [mSelected, setMSelected] = useState<Set<string>>(new Set())
+  const [vSelected, setVSelected] = useState<Set<string>>(new Set())
+
+  function toggleMSelection(name: string) {
+    setMSelected(prev => { const s = new Set(prev); s.has(name) ? s.delete(name) : s.add(name); return s })
+  }
+  function toggleVSelection(name: string) {
+    setVSelected(prev => { const s = new Set(prev); s.has(name) ? s.delete(name) : s.add(name); return s })
+  }
+
+  function downloadMSelected() {
+    const rows = mappingGroups.filter(g => mSelected.has(g.providerName)).flatMap(g => g.enrollees)
+    downloadCSV(rows as unknown as Record<string, unknown>[], 'mapping_selected.csv')
+  }
+  function downloadVSelected() {
+    const rows = visitGroups.filter(g => vSelected.has(g.providerName)).flatMap(g => g.enrollees)
+    downloadCSV(rows as unknown as Record<string, unknown>[], 'visit_selected.csv')
+  }
 
   useEffect(() => { load() }, [])
 
@@ -490,9 +536,24 @@ export default function ProviderBandMappingPage() {
             )}
           </div>
 
-          <p className="text-xs text-slate-400">
-            {mappingGroups.length} provider{mappingGroups.length !== 1 ? 's' : ''} · {mappingGroups.reduce((s, g) => s + g.enrollees.length, 0)} enrollees shown
-          </p>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <p className="text-xs text-slate-400">
+              {mappingGroups.length} provider{mappingGroups.length !== 1 ? 's' : ''} · {mappingGroups.reduce((s, g) => s + g.enrollees.length, 0)} enrollees shown
+            </p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setMSelected(new Set(mappingGroups.map(g => g.providerName)))}
+                className="text-xs text-indigo-600 hover:underline">Select all</button>
+              <span className="text-slate-300">|</span>
+              <button onClick={() => setMSelected(new Set())}
+                className="text-xs text-slate-500 hover:underline">Clear</button>
+              {mSelected.size > 0 && (
+                <button onClick={downloadMSelected}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors">
+                  ↓ Download {mSelected.size} selected
+                </button>
+              )}
+            </div>
+          </div>
 
           {mappingGroups.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
@@ -502,7 +563,9 @@ export default function ProviderBandMappingPage() {
           ) : (
             <div className="space-y-3">
               {mappingGroups.map(g => (
-                <MappingProviderCard key={g.providerName} group={g} />
+                <MappingProviderCard key={g.providerName} group={g}
+                  selected={mSelected.has(g.providerName)}
+                  onToggle={() => toggleMSelection(g.providerName)} />
               ))}
             </div>
           )}
@@ -533,9 +596,24 @@ export default function ProviderBandMappingPage() {
             )}
           </div>
 
-          <p className="text-xs text-slate-400">
-            {visitGroups.length} provider{visitGroups.length !== 1 ? 's' : ''} · {visitRows.length} enrollees total
-          </p>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <p className="text-xs text-slate-400">
+              {visitGroups.length} provider{visitGroups.length !== 1 ? 's' : ''} · {visitRows.length} enrollees total
+            </p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setVSelected(new Set(visitGroups.map(g => g.providerName)))}
+                className="text-xs text-indigo-600 hover:underline">Select all</button>
+              <span className="text-slate-300">|</span>
+              <button onClick={() => setVSelected(new Set())}
+                className="text-xs text-slate-500 hover:underline">Clear</button>
+              {vSelected.size > 0 && (
+                <button onClick={downloadVSelected}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors">
+                  ↓ Download {vSelected.size} selected
+                </button>
+              )}
+            </div>
+          </div>
 
           {visitGroups.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
@@ -545,7 +623,9 @@ export default function ProviderBandMappingPage() {
           ) : (
             <div className="space-y-3">
               {visitGroups.map(g => (
-                <VisitProviderCard key={g.providerName} group={g} />
+                <VisitProviderCard key={g.providerName} group={g}
+                  selected={vSelected.has(g.providerName)}
+                  onToggle={() => toggleVSelection(g.providerName)} />
               ))}
             </div>
           )}
