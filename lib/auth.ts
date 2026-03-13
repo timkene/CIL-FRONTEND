@@ -5,6 +5,7 @@ export const ALL_MODULES = [
   'Renewal Plan',
   'Provider Fraud',
   'Enrollee Provider Mapping',
+  'Executive Dashboard',
   'Admin',
 ] as const
 
@@ -27,6 +28,7 @@ export const MODULE_ROUTES: { href: string; label: string; module: string }[] = 
   { href: '/renewal',        label: 'Renewal Plan',     module: 'Renewal Plan' },
   { href: '/providers/fraud',         label: 'Provider Fraud',            module: 'Provider Fraud' },
   { href: '/providers/band-mapping',  label: 'Enrollee Provider Mapping', module: 'Enrollee Provider Mapping' },
+  { href: '/dashboard',               label: 'Executive Dashboard',       module: 'Executive Dashboard' },
   { href: '/admin',                   label: 'Admin',                     module: 'Admin' },
 ]
 

@@ -20,6 +20,7 @@ const PATH_MODULE: Record<string, string> = {
   '/renewal':          'Renewal Plan',
   '/providers/fraud':        'Provider Fraud',
   '/providers/band-mapping': 'Enrollee Provider Mapping',
+  '/dashboard':              'Executive Dashboard',
   '/admin':                  'Admin',
 }
 
