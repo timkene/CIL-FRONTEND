@@ -6,6 +6,7 @@ export const ALL_MODULES = [
   'Provider Fraud',
   'Enrollee Provider Mapping',
   'Executive Dashboard',
+  'AI Medical Report',
   'Admin',
 ] as const
 
@@ -29,6 +30,7 @@ export const MODULE_ROUTES: { href: string; label: string; module: string }[] = 
   { href: '/providers/fraud',         label: 'Provider Fraud',            module: 'Provider Fraud' },
   { href: '/providers/band-mapping',  label: 'Enrollee Provider Mapping', module: 'Enrollee Provider Mapping' },
   { href: '/dashboard',               label: 'Executive Dashboard',       module: 'Executive Dashboard' },
+  { href: '/reports',                 label: 'AI Medical Report',         module: 'AI Medical Report' },
   { href: '/admin',                   label: 'Admin',                     module: 'Admin' },
 ]
 
