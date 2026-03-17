@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   BarChart, Bar, LineChart, Line,
@@ -37,6 +37,25 @@ interface CashBreakRow {
   total_cash: number; salary_palliative: number; expense: number; commission: number
   salary_palliative_pct: number; expense_pct: number; commission_pct: number
   remaining: number; remaining_pct: number
+}
+
+interface PaymentScheduleRow {
+  id: number
+  group_id: number
+  group_name: string
+  payment_pattern: string
+  year: number
+  month: number
+  month_label: string
+  installment_num: number
+  total_installments: number
+  expected_amount: number | null
+  invoice_status: string
+  invoice_number: string | null
+  is_renewal_advance: boolean
+  contract_start: string
+  contract_end: string
+  cash_received: number
 }
 
 // ── Derived types for UI ───────────────────────────────────────────────────────
@@ -424,6 +443,193 @@ function CashBreakSection({ rows }: { rows: CashBreakRow[] }) {
   )
 }
 
+// ── SECTION 6 — Payment Schedule ───────────────────────────────────────────────
+const PATTERN_LABEL: Record<string, string> = {
+  monthly:     'Monthly',
+  quarterly:   'Quarterly',
+  triannually: 'Tri-annual',
+  biannually:  'Bi-annual',
+  annually:    'Annual',
+}
+const PATTERN_COLOR: Record<string, string> = {
+  monthly:     'bg-violet-100 text-violet-700',
+  quarterly:   'bg-sky-100 text-sky-700',
+  triannually: 'bg-teal-100 text-teal-700',
+  biannually:  'bg-indigo-100 text-indigo-700',
+  annually:    'bg-slate-100 text-slate-600',
+}
+
+interface MonthBucket {
+  key: string; year: number; month: number; month_label: string
+  rows: PaymentScheduleRow[]
+  total_expected: number; total_cash: number
+}
+
+function PaymentScheduleSection({ rows }: { rows: PaymentScheduleRow[] }) {
+  const today = new Date()
+  const curKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+
+  const months = useMemo<MonthBucket[]>(() => {
+    const map = new Map<string, MonthBucket>()
+    for (const r of rows) {
+      if (r.is_renewal_advance) continue
+      const key = `${r.year}-${String(r.month).padStart(2, '0')}`
+      if (!map.has(key)) {
+        map.set(key, {
+          key, year: r.year, month: r.month,
+          month_label: `${r.month_label} ${r.year}`,
+          rows: [], total_expected: 0, total_cash: 0,
+        })
+      }
+      const g = map.get(key)!
+      g.rows.push(r)
+      g.total_expected += r.expected_amount ?? 0
+      g.total_cash     += r.cash_received  ?? 0
+    }
+    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key))
+  }, [rows])
+
+  const [open, setOpen] = useState<Set<string>>(new Set([curKey]))
+  const toggle = (key: string) =>
+    setOpen(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s })
+
+  const [search, setSearch] = useState('')
+
+  const collectionPct = (exp: number, cash: number) =>
+    exp > 0 ? Math.min(cash / exp * 100, 999) : null
+
+  return (
+    <section>
+      <SectionHead
+        title="Payment Schedule"
+        subtitle="Expected installments per group by month · cash collected per company"
+      />
+
+      {/* search */}
+      <div className="relative mb-4 w-full sm:w-64">
+        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input
+          className="pl-8 pr-4 py-2 bg-slate-100 rounded-lg text-sm w-full outline-none focus:ring-2 focus:ring-[#137fec] border-none"
+          placeholder="Filter by company…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-3">
+        {months.map(m => {
+          const filteredRows = search
+            ? m.rows.filter(r => r.group_name.toLowerCase().includes(search.toLowerCase()))
+            : m.rows
+
+          if (search && filteredRows.length === 0) return null
+
+          const isOpen    = open.has(m.key)
+          const isCurrent = m.key === curKey
+          const pct       = collectionPct(m.total_expected, m.total_cash)
+          const pctColor  = pct == null ? '' : pct >= 100 ? 'text-emerald-600' : pct >= 60 ? 'text-amber-600' : 'text-rose-600'
+
+          return (
+            <div key={m.key}
+              className={`rounded-xl border shadow-sm overflow-hidden ${isCurrent ? 'border-[#137fec]/40 ring-1 ring-[#137fec]/20' : 'border-slate-200'}`}>
+
+              {/* Month header */}
+              <button
+                onClick={() => toggle(m.key)}
+                className="w-full flex items-center justify-between px-5 py-4 bg-white hover:bg-slate-50 transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  {isCurrent && (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-[#137fec]/10 text-[#137fec]">
+                      Current
+                    </span>
+                  )}
+                  <span className="font-bold text-slate-800">{m.month_label}</span>
+                  <span className="text-xs text-slate-400">{m.rows.length} group{m.rows.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="flex items-center gap-6 text-sm">
+                  <div className="text-right hidden sm:block">
+                    <p className="text-xs text-slate-400">Expected</p>
+                    <p className="font-semibold text-slate-700">{Mn(m.total_expected)}</p>
+                  </div>
+                  <div className="text-right hidden sm:block">
+                    <p className="text-xs text-slate-400">Collected</p>
+                    <p className="font-semibold text-emerald-600">{Mn(m.total_cash)}</p>
+                  </div>
+                  {pct != null && (
+                    <span className={`text-sm font-bold ${pctColor} w-14 text-right`}>
+                      {pct.toFixed(0)}%
+                    </span>
+                  )}
+                  <span className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>▼</span>
+                </div>
+              </button>
+
+              {/* Companies table */}
+              {isOpen && (
+                <div className="border-t border-slate-100 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        {['Company', 'Pattern', 'Expected', 'Invoice', 'Cash Received', 'Gap'].map(h => (
+                          <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredRows.map(r => {
+                        const gap  = (r.expected_amount ?? 0) - (r.cash_received ?? 0)
+                        const gapColor = gap <= 0 ? 'text-emerald-600' : 'text-rose-600'
+                        return (
+                          <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 font-medium text-slate-800 max-w-[220px] truncate">
+                              {r.group_name}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PATTERN_COLOR[r.payment_pattern] ?? 'bg-slate-100 text-slate-600'}`}>
+                                {PATTERN_LABEL[r.payment_pattern] ?? r.payment_pattern}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 tabular-nums whitespace-nowrap font-semibold text-slate-700">
+                              {r.expected_amount != null ? N(r.expected_amount) : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                r.invoice_status === 'raised' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                              }`}>
+                                {r.invoice_status === 'raised' ? '✓' : '○'} {r.invoice_status}
+                              </span>
+                              {r.invoice_number && (
+                                <div className="text-xs text-slate-400 font-mono mt-0.5">{r.invoice_number}</div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 tabular-nums whitespace-nowrap">
+                              {(r.cash_received ?? 0) > 0
+                                ? <span className="text-emerald-700 font-semibold">{N(r.cash_received)}</span>
+                                : <span className="text-slate-300">—</span>
+                              }
+                            </td>
+                            <td className={`px-4 py-3 tabular-nums whitespace-nowrap font-semibold ${gapColor}`}>
+                              {r.expected_amount != null
+                                ? (gap <= 0 ? `+${N(Math.abs(gap))}` : `-${N(gap)}`)
+                                : <span className="text-slate-300">—</span>
+                              }
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function ExecutiveDashboard() {
   const [loading,   setLoading]   = useState(true)
@@ -433,6 +639,7 @@ export default function ExecutiveDashboard() {
   const [contracts, setContracts] = useState<ContractRow[]>([])
   const [top20,     setTop20]     = useState<Top20Row[]>([])
   const [cashBreak, setCashBreak] = useState<CashBreakRow[]>([])
+  const [paySched,  setPaySched]  = useState<PaymentScheduleRow[]>([])
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
 
   useEffect(() => { load() }, [])
@@ -440,12 +647,13 @@ export default function ExecutiveDashboard() {
   async function load() {
     setLoading(true); setError(null)
     try {
-      const [kpiRes, trendRes, contractRes, top20Res, cashRes] = await Promise.all([
+      const [kpiRes, trendRes, contractRes, top20Res, cashRes, paySchedRes] = await Promise.all([
         supabase.from('dashboard_kpi_cards').select('*').eq('id', 1).single(),
         supabase.from('dashboard_monthly_trends').select('*'),
         supabase.from('dashboard_contract_summary').select('*').order('group_name'),
         supabase.from('dashboard_top20').select('*'),
         supabase.from('dashboard_cash_breakdown').select('*').order('year').order('month'),
+        supabase.from('dashboard_payment_schedule').select('*').order('year').order('month').order('group_name').limit(3000),
       ])
 
       for (const r of [kpiRes, trendRes, contractRes, top20Res, cashRes]) {
@@ -458,6 +666,7 @@ export default function ExecutiveDashboard() {
       setContracts(contractRes.data as ContractRow[])
       setTop20(top20Res.data as Top20Row[])
       setCashBreak(cashRes.data as CashBreakRow[])
+      setPaySched((paySchedRes.data ?? []) as PaymentScheduleRow[])
       if (k) setUpdatedAt(k.ytd_to)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unknown error')
@@ -484,6 +693,7 @@ export default function ExecutiveDashboard() {
         {contracts.length > 0 && <ContractSection rows={contracts} />}
         {top20.length > 0     && <Top20Section    rows={top20} />}
         {cashBreak.length > 0 && <CashBreakSection rows={cashBreak} />}
+        {paySched.length > 0  && <PaymentScheduleSection rows={paySched} />}
       </div>
     </>
   )
