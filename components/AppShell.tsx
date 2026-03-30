@@ -22,6 +22,7 @@ const PATH_MODULE: Record<string, string> = {
   '/providers/band-mapping': 'Enrollee Provider Mapping',
   '/dashboard':              'Executive Dashboard',
   '/reports':                'AI Medical Report',
+  '/sla':                    'SLA Generator',
   '/admin':                  'Admin',
 }
 

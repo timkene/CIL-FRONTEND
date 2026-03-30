@@ -7,6 +7,7 @@ export const ALL_MODULES = [
   'Enrollee Provider Mapping',
   'Executive Dashboard',
   'AI Medical Report',
+  'SLA Generator',
   'Admin',
 ] as const
 
@@ -31,6 +32,7 @@ export const MODULE_ROUTES: { href: string; label: string; module: string }[] = 
   { href: '/providers/band-mapping',  label: 'Enrollee Provider Mapping', module: 'Enrollee Provider Mapping' },
   { href: '/dashboard',               label: 'Executive Dashboard',       module: 'Executive Dashboard' },
   { href: '/reports',                 label: 'AI Medical Report',         module: 'AI Medical Report' },
+  { href: '/sla',                     label: 'SLA Generator',             module: 'SLA Generator' },
   { href: '/admin',                   label: 'Admin',                     module: 'Admin' },
 ]
 
