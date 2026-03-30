@@ -236,7 +236,7 @@ export default function SLAPage() {
     setGenerateError('')
     setDownloadUrl('')
     try {
-      const res = await fetch('/api/sla/generate', {
+      const res = await fetch('/api/sla_generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildRequestBody()),
@@ -272,7 +272,7 @@ export default function SLAPage() {
         client_email:     clientEmail,
         test_mode:        esignTestMode,
       }
-      const res = await fetch('/api/sla/send-esign', {
+      const res = await fetch('/api/sla_esign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
