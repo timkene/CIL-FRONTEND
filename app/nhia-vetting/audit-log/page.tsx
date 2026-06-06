@@ -48,12 +48,16 @@ export default function AuditLogPage() {
   const [events,  setEvents]  = useState<AuditEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [search,  setSearch]  = useState('')
+  const [error,   setError]   = useState('')
 
   useEffect(() => {
     nhiaFetch(`${API}/api/v1/nhia/audit-log?limit=500`)
       .then(r => r.json())
       .then(d => setEvents(d.events ?? []))
-      .catch(() => setEvents([]))
+      .catch(() => {
+        setError('Failed to load audit events. Please try again.')
+        setEvents([])
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -90,6 +94,12 @@ export default function AuditLogPage() {
           className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#137fec]/30"
         />
       </div>
+
+      {error && (
+        <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3">
+          {error}
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
