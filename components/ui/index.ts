@@ -33,7 +33,7 @@ export { Modal } from './Modal'
 export type { ModalProps } from './Modal/types'
 
 export { Toast, ToastContainer, useToast } from './Toast'
-export type { ToastType, ToastOptions, ToastVariant, ToastPosition } from './Toast/types'
+export type { ToastOptions, ToastVariant, ToastPosition } from './Toast/types'
 
 export { Table, PaginatedTable } from './Table'
 export type { TableProps, PaginatedTableProps, Column, SortDirection } from './Table/types'
