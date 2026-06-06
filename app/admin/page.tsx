@@ -2,6 +2,49 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, type Staff, type DeptPermission } from '@/lib/supabase'
 import { ALL_MODULES } from '@/lib/auth'
+import { Button } from '@/components/ui'
+import { nhiaFetch } from '@/lib/nhia-fetch'
+
+const NHIA_API = process.env.NEXT_PUBLIC_NHIA_API_URL || 'http://localhost:8005'
+
+interface AuditEvent {
+  batch_id:          string
+  batch_name:        string
+  action:            string
+  performed_by_id:   number
+  performed_by_name: string
+  performed_at:      string
+  meta:              Record<string, unknown>
+}
+
+const AUDIT_ACTION_LABEL: Record<string, string> = {
+  CREATE_BATCH:       'Created',
+  SAVE_BATCH:         'Saved',
+  DELETE_BATCH:       'Deleted',
+  SUBMIT_FOR_VETTING: 'Submitted',
+  ACCEPT_BATCH:       'Accepted',
+  REJECT_BATCH:       'Rejected',
+}
+
+const AUDIT_ACTION_STYLE: Record<string, string> = {
+  CREATE_BATCH:       'bg-slate-100 text-slate-600',
+  SAVE_BATCH:         'bg-slate-100 text-slate-600',
+  DELETE_BATCH:       'bg-rose-50 text-rose-700',
+  SUBMIT_FOR_VETTING: 'bg-blue-50 text-blue-700',
+  ACCEPT_BATCH:       'bg-emerald-50 text-emerald-700',
+  REJECT_BATCH:       'bg-rose-50 text-rose-700',
+}
+
+function fmtAuditDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleString('en-NG', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -169,13 +212,12 @@ function StaffModal({
         </div>
 
         <div className="px-6 pb-6 flex gap-3 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">
+          <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="px-5 py-2 bg-[#137fec] text-white text-sm font-bold rounded-lg hover:bg-[#0f6fd4] disabled:opacity-60">
-            {saving ? 'Saving...' : (isNew ? 'Add Member' : 'Save Changes')}
-          </button>
+          </Button>
+          <Button variant="primary" size="sm" loading={saving} onClick={handleSave}>
+            {isNew ? 'Add Member' : 'Save Changes'}
+          </Button>
         </div>
       </div>
     </div>
@@ -253,13 +295,12 @@ function DeptModal({
         </div>
 
         <div className="px-6 pb-6 flex gap-3 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">
+          <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="px-5 py-2 bg-[#137fec] text-white text-sm font-bold rounded-lg hover:bg-[#0f6fd4] disabled:opacity-60">
-            {saving ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
+          <Button variant="primary" size="sm" loading={saving} onClick={handleSave}>
+            Save
+          </Button>
         </div>
       </div>
     </div>
@@ -267,7 +308,7 @@ function DeptModal({
 }
 
 // ── Main Admin Page ───────────────────────────────────────────────────────────
-type Tab = 'staff' | 'departments'
+type Tab = 'staff' | 'departments' | 'nhia-activity'
 
 export default function AdminPage() {
   const [tab,     setTab]     = useState<Tab>('staff')
@@ -276,6 +317,11 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [search,  setSearch]  = useState('')
   const [deptFilter, setDeptFilter] = useState('ALL')
+
+  const [auditEvents,  setAuditEvents]  = useState<AuditEvent[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditSearch,  setAuditSearch]  = useState('')
+  const [auditError,   setAuditError]   = useState('')
 
   // Modals
   const [editStaff,    setEditStaff]    = useState<Partial<Staff> | null | false>(false)
@@ -291,7 +337,26 @@ export default function AdminPage() {
     setLoading(false)
   }
 
+  async function loadAuditEvents() {
+    setAuditLoading(true)
+    setAuditError('')
+    try {
+      const res = await nhiaFetch(`${NHIA_API}/api/v1/nhia/audit-log?limit=500`)
+      const data = await res.json()
+      setAuditEvents(data.events ?? [])
+    } catch {
+      setAuditError('Failed to load NHIA activity. Please try again.')
+      setAuditEvents([])
+    } finally {
+      setAuditLoading(false)
+    }
+  }
+
   useEffect(() => { loadAll() }, [])
+
+  useEffect(() => {
+    if (tab === 'nhia-activity') loadAuditEvents()
+  }, [tab])
 
   const departments = useMemo(() => depts.map(d => d.department).sort(), [depts])
 
@@ -350,7 +415,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div className="border-b border-slate-200 flex gap-6">
-          {([['staff', 'Team Members'], ['departments', 'Department Permissions']] as [Tab, string][]).map(([t, label]) => (
+          {([['staff', 'Team Members'], ['departments', 'Department Permissions'], ['nhia-activity', 'NHIA Activity']] as [Tab, string][]).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`pb-3 border-b-2 text-sm font-bold tracking-wide transition-colors ${
                 tab === t ? 'border-[#137fec] text-[#137fec]' : 'border-transparent text-slate-400 hover:text-[#137fec]'
@@ -387,12 +452,14 @@ export default function AdminPage() {
                   />
                 </div>
                 {/* Add member */}
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => setEditStaff({})}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-[#137fec] text-white text-sm font-bold rounded-lg hover:bg-[#0f6fd4] whitespace-nowrap">
-                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>person_add</span>
+                  leftIcon={<span className="material-symbols-outlined">person_add</span>}
+                >
                   Add Member
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -474,6 +541,91 @@ export default function AdminPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── NHIA Activity tab ──────────────────────────────────────────────────── */}
+        {tab === 'nhia-activity' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-lg font-bold">NHIA Vetting Activity</h4>
+                <p className="text-sm text-slate-500">All staff actions on NHIA claims batches</p>
+              </div>
+              <button
+                onClick={loadAuditEvents}
+                className="px-3 py-1.5 text-xs font-semibold text-[#137fec] border border-[#137fec] rounded-lg hover:bg-[#137fec]/5 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div className="max-w-sm">
+              <input
+                type="text"
+                placeholder="Search by batch or staff name…"
+                value={auditSearch}
+                onChange={e => setAuditSearch(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#137fec]/30"
+              />
+            </div>
+
+            {auditError && (
+              <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3">
+                {auditError}
+              </div>
+            )}
+
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              {auditLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <span
+                    className="material-symbols-outlined text-4xl text-[#137fec]"
+                    style={{ animation: 'spin 1s linear infinite' }}
+                  >
+                    progress_activity
+                  </span>
+                </div>
+              ) : auditEvents.length === 0 ? (
+                <div className="text-center py-16 text-slate-400 text-sm">
+                  No activity yet.{' '}
+                  <button onClick={loadAuditEvents} className="text-[#137fec] underline">Load</button>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">Date / Time</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">Action</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">Batch</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">Performed By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {auditEvents
+                      .filter(e => {
+                        const q = auditSearch.toLowerCase()
+                        return (
+                          e.batch_name.toLowerCase().includes(q) ||
+                          e.performed_by_name.toLowerCase().includes(q)
+                        )
+                      })
+                      .map((e, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{fmtAuditDate(e.performed_at)}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${AUDIT_ACTION_STYLE[e.action] ?? 'bg-slate-100 text-slate-600'}`}>
+                              {AUDIT_ACTION_LABEL[e.action] ?? e.action}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-slate-700">{e.batch_name || e.batch_id}</td>
+                          <td className="px-4 py-3 text-slate-700">{e.performed_by_name}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         )}
