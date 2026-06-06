@@ -37,7 +37,7 @@ export function Modal({
   useLockBodyScroll(open)
 
   // Trap focus within modal
-  useFocusTrap(modalRef, open)
+  useFocusTrap(open)
 
   // Handle Escape key
   useEffect(() => {
