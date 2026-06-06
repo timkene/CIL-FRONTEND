@@ -449,7 +449,7 @@ export default function BatchDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {canDelete && (
-            <Button variant="danger-outline" onClick={deleteBatch} disabled={deleting}>
+            <Button variant="danger" onClick={deleteBatch} disabled={deleting}>
               {deleting ? 'Deleting…' : 'Delete'}
             </Button>
           )}
