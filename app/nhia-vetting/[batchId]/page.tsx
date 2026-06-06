@@ -454,7 +454,7 @@ export default function BatchDetailPage() {
             </Button>
           )}
           {isVetted && (
-            <Button variant="warning" onClick={reopenBatch}>
+            <Button variant="outline" onClick={reopenBatch}>
               Re-open for Editing
             </Button>
           )}
