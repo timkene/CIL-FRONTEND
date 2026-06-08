@@ -1,0 +1,338 @@
+'use client'
+import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
+import { Button, Badge, useToast } from '@/components/ui'
+
+const API = process.env.NEXT_PUBLIC_NHIA_API_URL || 'http://localhost:8005'
+
+interface Claim {
+  batch_id: string
+  batch_name: string
+  encounter_date: string
+  accepted_at: string
+  enrollee_id: string
+  procedure_code: string
+  procedure_name: string
+  diagnosis_code: string
+  diagnosis_name: string
+  decision: string
+  confidence: number | null
+  reasoning: string | null
+  drop_reason: string | null
+  total_amount: number | null
+  pipeline_stage: string | null
+  encounter_date_from: string | null
+  encounter_date_to: string | null
+  date_submitted: string | null
+  pa_number: string | null
+  provider_id: string | null
+  provider_name: string | null
+  stated_price: number | null
+  stated_quantity: number | null
+  adjusted_price: number | null
+  adjusted_quantity: number | null
+}
+
+const DECISION_STYLE: Record<string, string> = {
+  APPROVE: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  DENY:    'bg-rose-50 text-rose-700 border border-rose-200',
+}
+
+function fmtMoney(n: number | null) {
+  if (!n) return '—'
+  return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function fmtDate(s: string | null) {
+  if (!s) return '—'
+  return s.slice(0, 10)
+}
+
+export default function NHIAClaimsPage() {
+  const [claims, setClaims]       = useState<Claim[]>([])
+  const [total, setTotal]         = useState(0)
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState('')
+  const [decision, setDecision]   = useState('ALL')
+  const [search, setSearch]       = useState('')
+  const [dateFrom, setDateFrom]   = useState('')
+  const [dateTo, setDateTo]       = useState('')
+  const [page, setPage]           = useState(1)
+  const limit = 50
+  const toast = useToast()
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (decision !== 'ALL') params.set('decision', decision)
+      if (search)   params.set('search', search)
+      if (dateFrom) params.set('date_from', dateFrom)
+      if (dateTo)   params.set('date_to', dateTo)
+
+      const res  = await fetch(`${API}/api/v1/nhia/claims?${params}`)
+      const data = await res.json()
+      setClaims(data.claims || [])
+      setTotal(data.total || 0)
+    } catch {
+      const errorMsg = 'Failed to load claims'
+      setError(errorMsg)
+      toast.error(errorMsg)
+    } finally {
+      setLoading(false)
+    }
+  }, [decision, search, dateFrom, dateTo, page]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { load() }, [load])
+
+  function handleSearch(e: React.SyntheticEvent) {
+    e.preventDefault()
+    setPage(1)
+    load()
+  }
+
+  const totalPages = Math.ceil(total / limit)
+
+  const denialReason = (c: Claim) =>
+    c.decision === 'DENY' ? (c.drop_reason || c.reasoning || '—') : null
+
+  return (
+    <div className="p-6 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">NHIA Claims</h1>
+          <p className="text-sm text-slate-500 mt-0.5">All individual claim lines from accepted batches</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href="/nhia-vetting/learning"
+            className="px-3 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+            Learning DB
+          </Link>
+          <Link href="/nhia-vetting/supervisor"
+            className="px-3 py-2 text-sm font-semibold text-[#137fec] border border-[#137fec] rounded-lg hover:bg-[#137fec]/5 transition-colors">
+            Supervisor
+          </Link>
+          <Link href="/nhia-vetting"
+            className="px-3 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+            ← Batches
+          </Link>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <form onSubmit={handleSearch} className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          {/* Decision toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+            {(['ALL', 'APPROVE', 'DENY'] as const).map(d => (
+              <Button
+                key={d}
+                variant={decision === d ? 'primary' : 'ghost'}
+                size="sm"
+                onClick={() => { setDecision(d); setPage(1) }}
+                className={`rounded-none ${decision === d && d === 'APPROVE' ? 'bg-emerald-500 hover:bg-emerald-600' : decision === d && d === 'DENY' ? 'bg-rose-500 hover:bg-rose-600' : ''}`}
+              >
+                {d}
+              </Button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="flex-1 min-w-[200px]">
+            <input
+              type="text"
+              placeholder="Search enrollee ID or procedure…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#137fec]/30"
+            />
+          </div>
+
+          {/* Date range */}
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#137fec]/30"
+            />
+            <span className="text-slate-400 text-sm">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#137fec]/30"
+            />
+          </div>
+
+          <Button type="submit" variant="primary" size="md">
+            Search
+          </Button>
+          {(search || dateFrom || dateTo) && (
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => { setSearch(''); setDateFrom(''); setDateTo(''); setPage(1) }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+      </form>
+
+      {error && (
+        <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3">
+          {error}
+        </div>
+      )}
+
+      {/* Summary bar */}
+      {!loading && (
+        <div className="flex items-center justify-between text-sm text-slate-500">
+          <span>
+            {total.toLocaleString()} claim{total !== 1 ? 's' : ''}
+            {decision !== 'ALL' && ` · ${decision}`}
+          </span>
+          {totalPages > 1 && (
+            <span>Page {page} of {totalPages}</span>
+          )}
+        </div>
+      )}
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-slate-400 text-sm">Loading…</div>
+      ) : claims.length === 0 ? (
+        <div className="text-center py-20 text-slate-400 text-sm">No claims found</div>
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">PA #</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Enrollee</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Procedure</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Diagnosis</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Provider</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Enc. From</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Enc. To</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Date Submitted</th>
+                {/* Stated (submitted) */}
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap bg-slate-50/50">Stated Price</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap bg-slate-50/50">Stated Qty</th>
+                {/* Approved */}
+                <th className="text-right px-4 py-3 text-xs font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap bg-emerald-50/30">Approved Price</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap bg-emerald-50/30">Approved Qty</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap bg-emerald-50/30">Approved Total</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Decision</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Denial Reason</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Batch</th>
+              </tr>
+            </thead>
+            <tbody>
+              {claims.map((c, i) => {
+                const reason = denialReason(c)
+                return (
+                  <tr
+                    key={`${c.batch_id}-${c.enrollee_id}-${c.procedure_code}-${i}`}
+                    className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-50/30'}`}
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-slate-700 whitespace-nowrap">{c.pa_number || '—'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-700 whitespace-nowrap">{c.enrollee_id || '—'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <p className="font-semibold text-slate-800 text-xs">{c.procedure_code}</p>
+                      <p className="text-xs text-slate-400 mt-0.5 max-w-[180px] truncate" title={c.procedure_name ?? undefined}>{c.procedure_name || '—'}</p>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <p className="font-semibold text-slate-800 text-xs">{c.diagnosis_code || '—'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5 max-w-[160px] truncate" title={c.diagnosis_name ?? undefined}>{c.diagnosis_name || '—'}</p>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <p className="text-xs font-medium text-slate-700">{c.provider_id || '—'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5 max-w-[160px] truncate" title={c.provider_name ?? undefined}>{c.provider_name || ''}</p>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{fmtDate(c.encounter_date_from)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{fmtDate(c.encounter_date_to)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(c.date_submitted)}</td>
+                    {/* Stated */}
+                    <td className="px-4 py-3 text-right text-xs text-slate-400 whitespace-nowrap bg-slate-50/30">{fmtMoney(c.stated_price)}</td>
+                    <td className="px-4 py-3 text-right text-xs text-slate-400 whitespace-nowrap bg-slate-50/30">{c.stated_quantity ?? '—'}</td>
+                    {/* Approved price — amber if slashed */}
+                    <td className="px-4 py-3 text-right text-xs font-semibold whitespace-nowrap bg-emerald-50/20">
+                      {c.adjusted_price != null ? (
+                        <span className={c.adjusted_price !== c.stated_price ? 'text-amber-600' : 'text-slate-800'}>
+                          {fmtMoney(c.adjusted_price)}
+                          {c.adjusted_price !== c.stated_price && c.stated_price != null && (
+                            <span className="block text-[10px] font-normal text-slate-400 line-through">{fmtMoney(c.stated_price)}</span>
+                          )}
+                        </span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    {/* Approved qty — amber if slashed */}
+                    <td className="px-4 py-3 text-right text-xs font-semibold whitespace-nowrap bg-emerald-50/20">
+                      {c.adjusted_quantity != null ? (
+                        <span className={c.adjusted_quantity !== c.stated_quantity ? 'text-amber-600' : 'text-slate-800'}>
+                          {c.adjusted_quantity}
+                          {c.adjusted_quantity !== c.stated_quantity && c.stated_quantity != null && (
+                            <span className="block text-[10px] font-normal text-slate-400 line-through">{c.stated_quantity}</span>
+                          )}
+                        </span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    {/* Approved total */}
+                    <td className="px-4 py-3 text-right text-xs font-bold text-slate-900 whitespace-nowrap bg-emerald-50/20">{fmtMoney(c.total_amount)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge
+                        variant={c.decision === 'APPROVE' ? 'success' : c.decision === 'DENY' ? 'error' : 'neutral'}
+                        size="sm"
+                      >
+                        {c.decision}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 max-w-[260px]">
+                      {reason ? (
+                        <p className="text-xs text-rose-600 leading-relaxed">{reason}</p>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <p className="text-xs font-medium text-slate-700">{c.batch_name || c.batch_id}</p>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+          >
+            ← Prev
+          </Button>
+          <span className="text-sm text-slate-500 px-2">
+            {page} / {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+          >
+            Next →
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}

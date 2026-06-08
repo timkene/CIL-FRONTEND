@@ -63,7 +63,7 @@ export default function NHIAVettingPage() {
     }
   }
 
-  useEffect(() => { loadBatches() }, [statusFilter, toast])
+  useEffect(() => { loadBatches() }, [statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function createBatch() {
     setCreating(true)
