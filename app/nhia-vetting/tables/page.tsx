@@ -72,8 +72,8 @@ function EditModal({
         try { body[key.trim()] = JSON.parse(value) } catch { body[key.trim()] = value }
       }
       const url = isNew
-        ? `${API}/api/v1/private/tables/${collection}`
-        : `${API}/api/v1/private/tables/${collection}/${doc!._id}`
+        ? `${API}/api/v1/nhia/tables/${collection}`
+        : `${API}/api/v1/nhia/tables/${collection}/${doc!._id}`
       const res = await fetch(url, {
         method:  isNew ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -170,7 +170,7 @@ export default function TablesPage() {
   const toast = useToast()
 
   useEffect(() => {
-    fetch(`${API}/api/v1/private/tables`)
+    fetch(`${API}/api/v1/nhia/tables`)
       .then(r => r.json())
       .then(d => { setTables(d.tables || []); if (d.tables?.length) setActive(d.tables[0].collection) })
       .catch(() => {
@@ -187,7 +187,7 @@ export default function TablesPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) })
       if (search) params.set('q', search)
-      const res  = await fetch(`${API}/api/v1/private/tables/${active}?${params}`)
+      const res  = await fetch(`${API}/api/v1/nhia/tables/${active}?${params}`)
       const data = await res.json()
       setDocs(data.docs || [])
       setTotal(data.total || 0)
@@ -209,7 +209,7 @@ export default function TablesPage() {
     if (!confirm('Delete this record? This cannot be undone.')) return
     setDeleting(id)
     try {
-      const res = await fetch(`${API}/api/v1/private/tables/${active}/${id}`, { method: 'DELETE' })
+      const res = await fetch(`${API}/api/v1/nhia/tables/${active}/${id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Record deleted successfully')
         loadDocs()

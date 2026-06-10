@@ -143,7 +143,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
         if (priceEdits[key] != null) override.adjusted_price    = priceEdits[key]
         return override
       }).filter(o => o.override_decision)
-      const res = await nhiaFetch(`${API}/api/v1/private/web-batches/${batch.batch_id}/accept`, {
+      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}/accept`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
@@ -173,7 +173,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
   async function doReject() {
     setSubmitting(true)
     try {
-      const res = await nhiaFetch(`${API}/api/v1/private/web-batches/${batch.batch_id}/reject`, {
+      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}/reject`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ action: 'REJECT', reviewed_by: reviewer, notes }),
@@ -495,7 +495,7 @@ export default function SupervisorPage() {
     setLoading(true)
     setError('')
     try {
-      const res  = await nhiaFetch(`${API}/api/v1/private/web-batches/supervisor`)
+      const res  = await nhiaFetch(`${API}/api/v1/nhia/web-batches/supervisor`)
       const data = await res.json()
       setBatches(data.batches || [])
     } catch {

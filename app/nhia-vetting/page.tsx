@@ -49,8 +49,8 @@ export default function NHIAVettingPage() {
     setLoading(true)
     try {
       const url = statusFilter === 'ALL'
-        ? `${API}/api/v1/private/web-batches`
-        : `${API}/api/v1/private/web-batches?status=${statusFilter}`
+        ? `${API}/api/v1/nhia/web-batches`
+        : `${API}/api/v1/nhia/web-batches?status=${statusFilter}`
       const res = await nhiaFetch(url)
       const data = await res.json()
       setBatches(data.batches || [])
@@ -68,7 +68,7 @@ export default function NHIAVettingPage() {
   async function createBatch() {
     setCreating(true)
     try {
-      const res = await nhiaFetch(`${API}/api/v1/private/web-batches`, {
+      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ created_by: 'staff' }),
@@ -88,7 +88,7 @@ export default function NHIAVettingPage() {
     if (!confirm(`Delete "${batchName}"? This cannot be undone.`)) return
     setDeletingId(batchId)
     try {
-      const res = await nhiaFetch(`${API}/api/v1/private/web-batches/${batchId}`, { method: 'DELETE' })
+      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batchId}`, { method: 'DELETE' })
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Delete failed') }
       toast.success('Batch deleted successfully')
       setBatches(prev => prev.filter(b => b.batch_id !== batchId))
