@@ -175,7 +175,7 @@ export default function BatchDetailPage() {
 
   const loadBatch = useCallback(async () => {
     try {
-      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batchId}`)
+      const res = await nhiaFetch(`${API}/api/v1/private/web-batches/${batchId}`)
       if (!res.ok) throw new Error('Batch not found')
       const data: Batch = await res.json()
       setBatch(data)
@@ -196,7 +196,7 @@ export default function BatchDetailPage() {
     setLookupError('')
     setLookupRows([])
     try {
-      const res = await fetch(`${API}/api/v1/nhia/pa-lookup?ticket_id=${encodeURIComponent(paInput.trim())}`)
+      const res = await fetch(`${API}/api/v1/private/pa-lookup?ticket_id=${encodeURIComponent(paInput.trim())}`)
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.detail || 'PA not found')
@@ -279,7 +279,7 @@ export default function BatchDetailPage() {
       if (enrolleeDebounceRef.current) clearTimeout(enrolleeDebounceRef.current)
       enrolleeDebounceRef.current = setTimeout(async () => {
         try {
-          const res = await fetch(`${API}/api/v1/nhia/enrollee-lookup?enrollee_id=${encodeURIComponent(value.trim())}`)
+          const res = await fetch(`${API}/api/v1/private/enrollee-lookup?enrollee_id=${encodeURIComponent(value.trim())}`)
           const data = await res.json()
           if (data.found) {
             setRows(prev => prev.map(r => r.row_id === rowId
@@ -299,7 +299,7 @@ export default function BatchDetailPage() {
   async function saveRows() {
     setSaving(true)
     try {
-      await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batchId}`, {
+      await nhiaFetch(`${API}/api/v1/private/web-batches/${batchId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rows, batch_date_submitted: batchDateSubmitted }),
@@ -320,7 +320,7 @@ export default function BatchDetailPage() {
     if (!batch || !confirm(`Delete "${batch.batch_name}"? This cannot be undone.`)) return
     setDeleting(true)
     try {
-      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batchId}`, { method: 'DELETE' })
+      const res = await nhiaFetch(`${API}/api/v1/private/web-batches/${batchId}`, { method: 'DELETE' })
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Delete failed') }
       toast.success('Batch deleted successfully')
       router.push('/nhia-vetting')
@@ -334,7 +334,7 @@ export default function BatchDetailPage() {
   async function reopenBatch() {
     if (!batch) return
     try {
-      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batchId}`, {
+      const res = await nhiaFetch(`${API}/api/v1/private/web-batches/${batchId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rows }),
@@ -376,7 +376,7 @@ export default function BatchDetailPage() {
     if (dirty) await saveRows()
     setSubmitting(true)
     try {
-      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batchId}/submit`, { method: 'POST' })
+      const res = await nhiaFetch(`${API}/api/v1/private/web-batches/${batchId}/submit`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json()
         const detail = err.detail
