@@ -174,11 +174,9 @@ export default function TablesPage() {
       .then(r => r.json())
       .then(d => { setTables(d.tables || []); if (d.tables?.length) setActive(d.tables[0].collection) })
       .catch(() => {
-        const errorMsg = 'Failed to load tables'
-        setError(errorMsg)
-        toast.error(errorMsg)
+        setError('Failed to load tables')
       })
-  }, [toast])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDocs = useCallback(async () => {
     if (!active) return
@@ -192,13 +190,11 @@ export default function TablesPage() {
       setDocs(data.docs || [])
       setTotal(data.total || 0)
     } catch {
-      const errorMsg = 'Failed to load records'
-      setError(errorMsg)
-      toast.error(errorMsg)
+      setError('Failed to load records')
     } finally {
       setLoading(false)
     }
-  }, [active, page, search, toast])
+  }, [active, page, search]) // toast excluded — not a stable ref
 
   useEffect(() => { loadDocs() }, [loadDocs])
 
