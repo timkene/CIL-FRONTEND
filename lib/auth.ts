@@ -9,6 +9,7 @@ export const ALL_MODULES = [
   'AI Medical Report',
   'SLA Generator',
   'NHIA Vetting',
+  'Health Screening',
   'Admin',
 ] as const
 
@@ -35,6 +36,7 @@ export const MODULE_ROUTES: { href: string; label: string; module: string }[] = 
   { href: '/reports',                 label: 'AI Medical Report',         module: 'AI Medical Report' },
   { href: '/sla',                     label: 'SLA Generator',             module: 'SLA Generator' },
   { href: '/nhia-vetting',            label: 'NHIA Vetting',              module: 'NHIA Vetting' },
+  { href: '/health-screening',        label: 'Health Screening',          module: 'Health Screening' },
   { href: '/admin',                   label: 'Admin',                     module: 'Admin' },
 ]
 
