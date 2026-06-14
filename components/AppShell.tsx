@@ -23,6 +23,8 @@ const PATH_MODULE: Record<string, string> = {
   '/dashboard':              'Executive Dashboard',
   '/reports':                'AI Medical Report',
   '/sla':                    'SLA Generator',
+  '/nhia-vetting':           'NHIA Vetting',
+  '/health-screening':       'Health Screening',
   '/admin':                  'Admin',
 }
 
