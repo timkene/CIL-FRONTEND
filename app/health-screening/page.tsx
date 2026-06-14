@@ -4,11 +4,42 @@ import { Button, Badge, Card, useToast } from '@/components/ui'
 import {
   uploadBatch, listEnrollees, analyseEnrollee,
   generateAndDownloadPdf, downloadExistingPdf,
-  sendEmail, streamNarrative,
-  type UploadResult, type EnrolleeWithStatus, type KlaireAnalysis,
+  sendEmail, generateBackblazeLink, streamNarrative,
+  type UploadResult, type EnrolleeWithStatus, type KlaireAnalysis, type EmailMethod,
 } from '@/lib/health-api'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+const SAMPLE_CSV = [
+  'name,age,gender,systolic,diastolic,blood_glucose,bmi,cholesterol,email,phone',
+  'Ngozi Adeyemi,34,F,118,76,92,22.8,175,ngozi.adeyemi@company.com,+2348012345678',
+  'Emeka Okonkwo,47,M,145,95,110,28.3,220,emeka.okonkwo@company.com,+2348087654321',
+  'Amaka Eze,29,F,108,70,85,21.1,160,amaka.eze@company.com,+2349023456789',
+  'Chibuike Nwosu,52,M,158,100,130,31.5,245,chibuike.nwosu@company.com,+2348034567890',
+].join('\n')
+
+function downloadSampleCsv() {
+  const blob = new Blob([SAMPLE_CSV], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = 'health_screening_sample.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const COLUMN_GUIDE: [string, string, boolean][] = [
+  ['name',          'Full name',           true],
+  ['age',           'Age (years)',          true],
+  ['gender',        'M or F',              true],
+  ['systolic',      'Systolic BP (mmHg)',  false],
+  ['diastolic',     'Diastolic BP (mmHg)', false],
+  ['blood_glucose', 'Glucose (mg/dL)',     false],
+  ['bmi',           'Body Mass Index',     false],
+  ['cholesterol',   'Cholesterol (mg/dL)', false],
+  ['email',         'Email address',       false],
+  ['phone',         'Phone number',        false],
+]
 
 const URGENCY_COLOR: Record<string, string> = {
   routine:  'success',
@@ -74,6 +105,35 @@ function UploadPanel({ onUpload }: { onUpload: (result: UploadResult) => void })
 
         <Card padding="lg">
           <div className="space-y-4">
+            {/* Sample format guide */}
+            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-slate-600">Required columns</p>
+                <button
+                  onClick={downloadSampleCsv}
+                  className="text-xs text-[#137fec] hover:underline flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 13 }}>download</span>
+                  Download sample
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {COLUMN_GUIDE.map(([col, desc, req]) => (
+                  <div key={col} className="flex items-start gap-1.5">
+                    <span className={`text-[10px] font-bold mt-0.5 ${req ? 'text-rose-500' : 'text-slate-300'}`}>●</span>
+                    <div>
+                      <span className="text-[11px] font-mono font-semibold text-slate-700">{col}</span>
+                      <span className="text-[10px] text-slate-400 ml-1">{desc}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-2">
+                <span className="text-rose-500 font-bold">●</span> Required &nbsp;
+                <span className="text-slate-300 font-bold">●</span> Optional (recommended for full analysis)
+              </p>
+            </div>
+
             {/* Company name */}
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">
@@ -187,23 +247,28 @@ function ScoreRing({ score, urgency }: { score: number; urgency: string }) {
 // ── Detail Panel ──────────────────────────────────────────────────────────────
 
 interface DetailPanelProps {
-  enrollee: EnrolleeWithStatus
-  analysis: KlaireAnalysis | null
-  analysing: boolean
-  generating: boolean
-  streaming: boolean
-  streamText: string
-  emailSent: boolean
-  onAnalyse: () => void
-  onGeneratePdf: () => void
-  onDownload: () => void
-  onSendEmail: () => void
-  onStream: () => void
+  enrollee:       EnrolleeWithStatus
+  analysis:       KlaireAnalysis | null
+  analysing:      boolean
+  generating:     boolean
+  streaming:      boolean
+  streamText:     string
+  emailSent:      boolean
+  emailSending:   boolean
+  emailMethod:    EmailMethod | 'backblaze'
+  backblazeUrl:   string | null
+  onAnalyse:      () => void
+  onGeneratePdf:  () => void
+  onDownload:     () => void
+  onSendEmail:    () => void
+  onStream:       () => void
+  onMethodChange: (m: EmailMethod | 'backblaze') => void
 }
 
 function DetailPanel({
-  enrollee, analysis, analysing, generating, streaming, streamText, emailSent,
-  onAnalyse, onGeneratePdf, onDownload, onSendEmail, onStream,
+  enrollee, analysis, analysing, generating, streaming, streamText,
+  emailSent, emailSending, emailMethod, backblazeUrl,
+  onAnalyse, onGeneratePdf, onDownload, onSendEmail, onStream, onMethodChange,
 }: DetailPanelProps) {
   const firstName = enrollee.name.split(' ')[0]
 
@@ -325,18 +390,72 @@ function DetailPanel({
             </Button>
 
             {enrollee.email && (
-              <Button
-                variant={emailSent ? 'secondary' : 'outline'}
-                size="sm"
-                fullWidth
-                onClick={onSendEmail}
-                disabled={emailSent}
-                leftIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>
-                  {emailSent ? 'mark_email_read' : 'send'}
-                </span>}
-              >
-                {emailSent ? 'Email Sent' : `Email to ${firstName}`}
-              </Button>
+              <div className="space-y-2">
+                {/* Method selector */}
+                <div className="flex rounded-lg overflow-hidden border border-slate-200">
+                  {([
+                    ['smtp',      'SMTP Zoho'],
+                    ['zohoapi',   'ZohoMail API'],
+                    ['backblaze', 'Backblaze Link'],
+                  ] as [EmailMethod | 'backblaze', string][]).map(([val, label]) => (
+                    <button
+                      key={val}
+                      onClick={() => onMethodChange(val)}
+                      className={`flex-1 py-1.5 text-[11px] font-medium transition-colors border-r last:border-r-0 border-slate-200 ${
+                        emailMethod === val
+                          ? 'bg-[#137fec] text-white'
+                          : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {emailMethod === 'backblaze' ? (
+                  backblazeUrl ? (
+                    <div className="space-y-1.5">
+                      <div className="bg-slate-50 rounded-lg border border-slate-200 p-2">
+                        <p className="text-[10px] text-slate-500 break-all leading-relaxed">{backblazeUrl}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        fullWidth
+                        onClick={() => navigator.clipboard.writeText(backblazeUrl)}
+                        leftIcon={<span className="material-symbols-outlined" style={{ fontSize: 14 }}>content_copy</span>}
+                      >
+                        Copy Link
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      fullWidth
+                      loading={emailSending}
+                      onClick={onSendEmail}
+                      leftIcon={!emailSending ? <span className="material-symbols-outlined" style={{ fontSize: 16 }}>cloud_upload</span> : undefined}
+                    >
+                      {emailSending ? 'Uploading to Backblaze…' : 'Generate Download Link'}
+                    </Button>
+                  )
+                ) : (
+                  <Button
+                    variant={emailSent ? 'secondary' : 'outline'}
+                    size="sm"
+                    fullWidth
+                    onClick={onSendEmail}
+                    disabled={emailSent || emailSending}
+                    loading={emailSending}
+                    leftIcon={!emailSending ? <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                      {emailSent ? 'mark_email_read' : 'send'}
+                    </span> : undefined}
+                  >
+                    {emailSent ? 'Email Sent' : emailSending ? 'Sending…' : `Email to ${firstName}`}
+                  </Button>
+                )}
+              </div>
             )}
           </>
         )}
@@ -368,11 +487,13 @@ function DetailPanel({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 interface EnrolleeState {
-  analysing:  boolean
-  generating: boolean
-  streaming:  boolean
-  streamText: string
-  emailSent:  boolean
+  analysing:    boolean
+  generating:   boolean
+  streaming:    boolean
+  streamText:   string
+  emailSent:    boolean
+  emailSending: boolean
+  backblazeUrl: string | null
 }
 
 export default function HealthScreeningPage() {
@@ -382,11 +503,12 @@ export default function HealthScreeningPage() {
   const [selected,  setSelected]  = useState<string | null>(null)
   const [states,    setStates]    = useState<Record<string, EnrolleeState>>({})
   const [loading,   setLoading]   = useState(false)
-  const [filter,    setFilter]    = useState<'all' | 'analysed' | 'pdf' | 'none'>('all')
+  const [filter,      setFilter]      = useState<'all' | 'analysed' | 'pdf' | 'none'>('all')
+  const [emailMethod, setEmailMethod] = useState<EmailMethod | 'backblaze'>('smtp')
   const toast = useToast()
 
   const getState = (id: string): EnrolleeState =>
-    states[id] ?? { analysing: false, generating: false, streaming: false, streamText: '', emailSent: false }
+    states[id] ?? { analysing: false, generating: false, streaming: false, streamText: '', emailSent: false, emailSending: false, backblazeUrl: null }
 
   const patchState = (id: string, patch: Partial<EnrolleeState>) =>
     setStates(s => ({ ...s, [id]: { ...getState(id), ...patch } }))
@@ -459,15 +581,23 @@ export default function HealthScreeningPage() {
   }, [toast])
 
   const handleSendEmail = useCallback(async (enrolleeId: string) => {
+    patchState(enrolleeId, { emailSending: true })
     try {
-      await sendEmail(enrolleeId)
-      patchState(enrolleeId, { emailSent: true })
-      patchEnrollee(enrolleeId, { email_sent: true })
-      toast.success('Report emailed successfully')
+      if (emailMethod === 'backblaze') {
+        const result = await generateBackblazeLink(enrolleeId)
+        patchState(enrolleeId, { backblazeUrl: result.download_url, emailSending: false })
+        toast.success('Backblaze download link generated')
+      } else {
+        await sendEmail(enrolleeId, emailMethod)
+        patchState(enrolleeId, { emailSent: true, emailSending: false })
+        patchEnrollee(enrolleeId, { email_sent: true })
+        toast.success('Report emailed successfully')
+      }
     } catch (err) {
       toast.error(String(err))
+      patchState(enrolleeId, { emailSending: false })
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [emailMethod]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStream = useCallback(async (enrolleeId: string) => {
     patchState(enrolleeId, { streaming: true, streamText: '' })
@@ -637,11 +767,15 @@ export default function HealthScreeningPage() {
                 streaming={getState(selectedEnrollee.enrollee_id).streaming}
                 streamText={getState(selectedEnrollee.enrollee_id).streamText}
                 emailSent={getState(selectedEnrollee.enrollee_id).emailSent || selectedEnrollee.email_sent}
+                emailSending={getState(selectedEnrollee.enrollee_id).emailSending}
+                emailMethod={emailMethod}
+                backblazeUrl={getState(selectedEnrollee.enrollee_id).backblazeUrl}
                 onAnalyse={() => handleAnalyse(selectedEnrollee.enrollee_id)}
                 onGeneratePdf={() => handleGeneratePdf(selectedEnrollee)}
                 onDownload={() => handleDownload(selectedEnrollee)}
                 onSendEmail={() => handleSendEmail(selectedEnrollee.enrollee_id)}
                 onStream={() => handleStream(selectedEnrollee.enrollee_id)}
+                onMethodChange={setEmailMethod}
               />
             ) : (
               <div className="flex items-center justify-center h-full text-slate-400">

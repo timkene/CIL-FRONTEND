@@ -50,10 +50,18 @@ export interface KlaireAnalysis {
   klaire_flags:  string
 }
 
+export type EmailMethod = 'smtp' | 'zohoapi'
+
 export interface EmailResult {
   enrollee_id: string
   sent:        boolean
   method:      string
+}
+
+export interface BackblazeLink {
+  enrollee_id:  string
+  download_url: string
+  expires_at:   string
 }
 
 // ── API Calls ──────────────────────────────────────────────────────────────────
@@ -107,12 +115,22 @@ export async function downloadExistingPdf(enrolleeId: string, name: string): Pro
   _triggerDownload(blob, `${name}_health_report.pdf`)
 }
 
-export async function sendEmail(enrolleeId: string): Promise<EmailResult> {
+export async function sendEmail(enrolleeId: string, method: EmailMethod = 'smtp'): Promise<EmailResult> {
   const res = await fetch(`${API_BASE}/api/email/send/${enrolleeId}`, {
+    method: 'POST',
+    headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method }),
+  })
+  if (!res.ok) throw new Error(`Email failed: ${await res.text()}`)
+  return res.json()
+}
+
+export async function generateBackblazeLink(enrolleeId: string): Promise<BackblazeLink> {
+  const res = await fetch(`${API_BASE}/api/email/backblaze/${enrolleeId}`, {
     method: 'POST',
     headers: authHeaders(),
   })
-  if (!res.ok) throw new Error(`Email failed: ${await res.text()}`)
+  if (!res.ok) throw new Error(`Backblaze upload failed: ${await res.text()}`)
   return res.json()
 }
 
