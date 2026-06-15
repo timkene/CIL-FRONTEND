@@ -5,7 +5,7 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
    * Visual style variant
    * @default 'default'
    */
-  variant?: 'default' | 'bordered' | 'elevated' | 'flat'
+  variant?: 'default' | 'bordered' | 'elevated' | 'flat' | 'success' | 'warning' | 'danger' | 'info'
 
   /**
    * Padding size

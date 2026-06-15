@@ -11,6 +11,10 @@ const variantStyles = {
   bordered: 'bg-white border-2 border-slate-300',
   elevated: 'bg-white border border-slate-100 shadow-lg',
   flat: 'bg-slate-50 border-0',
+  success: 'bg-emerald-50 border border-emerald-200',
+  warning: 'bg-amber-50 border border-amber-200',
+  danger: 'bg-rose-50 border border-rose-200',
+  info: 'bg-blue-50 border border-blue-200',
 }
 
 const paddingStyles = {
