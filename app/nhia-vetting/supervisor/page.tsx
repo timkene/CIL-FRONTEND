@@ -53,6 +53,7 @@ interface RowOverride {
   enrollee_id:       string
   procedure_code:    string
   override_decision: 'APPROVE' | 'DENY'
+  notes?:            string
   adjusted_quantity?: number
   adjusted_price?:    number
 }
@@ -75,9 +76,10 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
   const [expandedLine, setExpandedLine] = useState<string | null>(null)
   // key → 'APPROVE' | 'DENY' — only entries the supervisor has overridden
   const [overrides,    setOverrides]    = useState<Record<string, 'APPROVE' | 'DENY'>>({})
-  // key → supervisor-edited quantity / price
+  // key → supervisor-edited quantity / price / deny reason
   const [qtyEdits,     setQtyEdits]     = useState<Record<string, number>>({})
   const [priceEdits,   setPriceEdits]   = useState<Record<string, number>>({})
+  const [denyReasons,  setDenyReasons]  = useState<Record<string, string>>({})
   const [reviewer,     setReviewer]     = useState('Supervisor')
   const [notes,        setNotes]        = useState('')
   const [submitting,   setSubmitting]   = useState(false)
@@ -128,9 +130,23 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
   }
 
   async function doAccept() {
+    // Manual rows being denied always need a reason from the supervisor
+    const manualDenyKeys = allItems
+      .filter(({ eid, item }) =>
+        item.drop_reason === 'Manual entry' && effectiveDecision(eid, item) === 'DENY'
+      )
+      .map(({ eid, item }) => rowKey(eid, item.procedure_code))
+
+    const missingReasons = manualDenyKeys.filter(k => !denyReasons[k]?.trim())
+    if (missingReasons.length > 0) {
+      toast.error(`Denial reason required for ${missingReasons.length} manual row${missingReasons.length > 1 ? 's' : ''} before accepting`)
+      return
+    }
+
     setSubmitting(true)
     try {
-      const rowOverrides: RowOverride[] = Array.from(allEditedKeys).map(key => {
+      const allSubmitKeys = new Set([...allEditedKeys, ...manualDenyKeys])
+      const rowOverrides: RowOverride[] = Array.from(allSubmitKeys).map(key => {
         const [enrollee_id, procedure_code] = key.split('|')
         const override: RowOverride = {
           enrollee_id,
@@ -141,6 +157,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
         }
         if (qtyEdits[key]   != null) override.adjusted_quantity = qtyEdits[key]
         if (priceEdits[key] != null) override.adjusted_price    = priceEdits[key]
+        if (denyReasons[key]?.trim()) override.notes            = denyReasons[key].trim()
         return override
       }).filter(o => o.override_decision)
       const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}/accept`, {
@@ -379,6 +396,23 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                                   </Badge>
                                 ) : (
                                   <span className="text-[10px] text-slate-300">Same as AI</span>
+                                )}
+                                {/* Compulsory denial reason for manual rows */}
+                                {item.drop_reason === 'Manual entry' && effective === 'DENY' && (
+                                  <div className="mt-1.5">
+                                    <input
+                                      type="text"
+                                      maxLength={100}
+                                      value={denyReasons[k] ?? ''}
+                                      onChange={e => setDenyReasons(prev => ({ ...prev, [k]: e.target.value }))}
+                                      placeholder="Denial reason *"
+                                      className={`w-36 text-[10px] border rounded px-1.5 py-0.5 focus:outline-none focus:border-rose-400 ${
+                                        !denyReasons[k]?.trim()
+                                          ? 'border-rose-300 bg-rose-50/50 placeholder-rose-400'
+                                          : 'border-slate-200'
+                                      }`}
+                                    />
+                                  </div>
                                 )}
                               </td>
 
