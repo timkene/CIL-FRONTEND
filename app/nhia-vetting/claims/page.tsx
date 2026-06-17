@@ -226,6 +226,8 @@ export default function NHIAClaimsPage() {
                 <th className="text-right px-4 py-3 text-xs font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap bg-emerald-50/30">Approved Price</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap bg-emerald-50/30">Approved Qty</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-emerald-600 uppercase tracking-wide whitespace-nowrap bg-emerald-50/30">Approved Total</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">Stated Total</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-rose-500 uppercase tracking-wide whitespace-nowrap bg-rose-50/30">Denied Amt</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Decision</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Denial Reason</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Batch</th>
@@ -233,7 +235,13 @@ export default function NHIAClaimsPage() {
             </thead>
             <tbody>
               {claims.map((c, i) => {
-                const reason = denialReason(c)
+                const reason      = denialReason(c)
+                const statedTotal = c.stated_price != null
+                  ? Math.round((c.stated_price * (c.stated_quantity ?? 1)) * 100) / 100
+                  : null
+                const deniedAmt   = statedTotal != null && c.total_amount != null
+                  ? Math.round((statedTotal - c.total_amount) * 100) / 100
+                  : statedTotal   // if no approved amount recorded, full stated is denied
                 return (
                   <tr
                     key={`${c.batch_id}-${c.enrollee_id}-${c.procedure_code}-${i}`}
@@ -283,6 +291,15 @@ export default function NHIAClaimsPage() {
                     </td>
                     {/* Approved total */}
                     <td className="px-4 py-3 text-right text-xs font-bold text-slate-900 whitespace-nowrap bg-emerald-50/20">{fmtMoney(c.total_amount)}</td>
+                    {/* Stated total */}
+                    <td className="px-4 py-3 text-right text-xs text-slate-400 whitespace-nowrap">{fmtMoney(statedTotal)}</td>
+                    {/* Denied amount = stated total − approved total */}
+                    <td className="px-4 py-3 text-right text-xs font-semibold whitespace-nowrap bg-rose-50/20">
+                      {deniedAmt != null && deniedAmt > 0
+                        ? <span className="text-rose-600">{fmtMoney(deniedAmt)}</span>
+                        : <span className="text-slate-300">—</span>
+                      }
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <Badge
                         variant={c.decision === 'APPROVE' ? 'success' : c.decision === 'DENY' ? 'error' : 'neutral'}

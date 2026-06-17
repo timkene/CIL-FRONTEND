@@ -249,11 +249,15 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                       <tr className="border-b border-slate-100">
                         <th className="text-left px-4 py-2 text-slate-400 font-medium">Procedure</th>
                         <th className="text-left px-4 py-2 text-slate-400 font-medium">Diagnosis</th>
-                        <th className="text-right px-4 py-2 text-slate-400 font-medium">Stated</th>
+                        {/* Stated (read-only) */}
+                        <th className="text-right px-4 py-2 text-slate-400 font-medium bg-slate-50/60">Stated Price</th>
+                        <th className="text-right px-4 py-2 text-slate-400 font-medium bg-slate-50/60">Stated Qty</th>
+                        <th className="text-right px-4 py-2 text-slate-400 font-medium bg-slate-50/60">Stated Total</th>
                         <th className="text-right px-4 py-2 text-slate-400 font-medium">Tariff</th>
-                        <th className="text-right px-4 py-2 text-slate-400 font-medium">Qty</th>
-                        <th className="text-right px-4 py-2 text-slate-400 font-medium">Price</th>
-                        <th className="text-right px-4 py-2 text-slate-400 font-medium">Total</th>
+                        {/* Approved (editable) */}
+                        <th className="text-right px-4 py-2 text-emerald-600 font-medium bg-emerald-50/30">App. Qty</th>
+                        <th className="text-right px-4 py-2 text-emerald-600 font-medium bg-emerald-50/30">App. Price</th>
+                        <th className="text-right px-4 py-2 text-emerald-600 font-medium bg-emerald-50/30">App. Total</th>
                         <th className="text-left px-4 py-2 text-slate-400 font-medium">AI Decision</th>
                         <th className="text-left px-4 py-2 text-slate-400 font-medium">Supervisor</th>
                         <th className="px-4 py-2" />
@@ -272,6 +276,9 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                         const dispPrice    = priceEdits[k] ?? item.adjusted_price    ?? item.stated_price
                         const dispTotal    = effectiveTotal(eid, item)
                         const hasEdit      = isOverridden || hasQtyEdit || hasPriceEdit
+                        const statedTotal  = item.stated_price != null
+                          ? Math.round((item.stated_price * (item.stated_quantity ?? 1)) * 100) / 100
+                          : null
                         return (
                           <Fragment key={lineKey}>
                             <tr
@@ -288,15 +295,16 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                                 <p className="font-medium text-slate-800">{item.diagnosis_code}</p>
                                 <p className="text-slate-400 truncate max-w-[140px]" title={item.diagnosis_name}>{item.diagnosis_name}</p>
                               </td>
-                              {/* Stated price + AI slash indicator */}
-                              <td className="px-4 py-2.5 text-right text-[11px]">
-                                <p className="text-slate-400">{fmtMoney(item.stated_price)}</p>
-                              </td>
+                              {/* Stated — read-only reference */}
+                              <td className="px-4 py-2.5 text-right text-[11px] text-slate-400 bg-slate-50/40">{fmtMoney(item.stated_price)}</td>
+                              <td className="px-4 py-2.5 text-right text-[11px] text-slate-400 bg-slate-50/40">{item.stated_quantity ?? '—'}</td>
+                              <td className="px-4 py-2.5 text-right text-[11px] text-slate-500 font-medium bg-slate-50/40">{fmtMoney(statedTotal)}</td>
+
                               {/* Tariff */}
                               <td className="px-4 py-2.5 text-right text-slate-400 text-[11px]">{fmtMoney(item.tariff_price)}</td>
 
-                              {/* Editable Qty */}
-                              <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                              {/* Approved Qty — editable */}
+                              <td className="px-3 py-2 bg-emerald-50/20" onClick={e => e.stopPropagation()}>
                                 <input
                                   type="number"
                                   min={1}
@@ -306,13 +314,13 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                                     setQtyEdits(prev => ({ ...prev, [k]: v }))
                                   }}
                                   className={`w-14 text-xs text-right border rounded px-1.5 py-0.5 focus:outline-none focus:border-[#137fec] ${
-                                    hasQtyEdit ? 'border-amber-400 bg-amber-50' : 'border-slate-200'
+                                    hasQtyEdit ? 'border-amber-400 bg-amber-50' : 'border-emerald-200'
                                   }`}
                                 />
                               </td>
 
-                              {/* Editable Price */}
-                              <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                              {/* Approved Price — editable */}
+                              <td className="px-3 py-2 bg-emerald-50/20" onClick={e => e.stopPropagation()}>
                                 <input
                                   type="number"
                                   min={0}
@@ -324,13 +332,13 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                                     if (!isNaN(v)) setPriceEdits(prev => ({ ...prev, [k]: v }))
                                   }}
                                   className={`w-24 text-xs text-right border rounded px-1.5 py-0.5 focus:outline-none focus:border-[#137fec] ${
-                                    hasPriceEdit ? 'border-amber-400 bg-amber-50' : 'border-slate-200'
+                                    hasPriceEdit ? 'border-amber-400 bg-amber-50' : 'border-emerald-200'
                                   }`}
                                 />
                               </td>
 
-                              {/* Recalculated total */}
-                              <td className={`px-4 py-2.5 text-right font-semibold ${(hasQtyEdit || hasPriceEdit) ? 'text-amber-700' : 'text-slate-900'}`}>
+                              {/* Approved Total — recalculated */}
+                              <td className={`px-4 py-2.5 text-right font-semibold bg-emerald-50/20 ${(hasQtyEdit || hasPriceEdit) ? 'text-amber-700' : 'text-emerald-700'}`}>
                                 {fmtMoney(dispTotal)}
                               </td>
 
@@ -390,7 +398,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                             {/* Expanded reasoning row */}
                             {expandedLine === lineKey && (
                               <tr key={`exp-${lineKey}`} className="bg-blue-50/40">
-                                <td colSpan={10} className="px-5 py-3 text-[11px] text-slate-600 space-y-1">
+                                <td colSpan={12} className="px-5 py-3 text-[11px] text-slate-600 space-y-1">
                                   <p><strong>Reasoning:</strong> {item.reasoning}</p>
                                   {item.adjusted_quantity !== item.stated_quantity && item.adjusted_quantity != null && (
                                     <p className="text-amber-600">AI qty: {item.stated_quantity} → {item.adjusted_quantity}</p>
