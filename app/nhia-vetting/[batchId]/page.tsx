@@ -366,6 +366,29 @@ export default function BatchDetailPage() {
     }))
   }
 
+  async function fetchEnrollees(q: string): Promise<ComboOption[]> {
+    const res  = await fetch(`${API}/api/v1/nhia/search-enrollee?q=${encodeURIComponent(q)}&limit=20`)
+    const data = await res.json()
+    return (data.enrollees || []).map((e: { enrollee_id: string; first_name: string; last_name: string }) => ({
+      code: e.enrollee_id,
+      name: `${e.first_name} ${e.last_name}`.trim() || e.enrollee_id,
+    }))
+  }
+
+  async function fetchProviders(q: string): Promise<ComboOption[]> {
+    const res  = await fetch(`${API}/api/v1/klaire/search-providers?q=${encodeURIComponent(q)}&limit=20`)
+    const data = await res.json()
+    return (data.providers || []).map((p: { provider_id: string; provider_name: string }) => ({
+      code: p.provider_id,
+      name: p.provider_name,
+    }))
+  }
+
+  async function lookupDiagnosisCode(code: string): Promise<{ found: boolean; code: string; name: string; error?: string }> {
+    const res  = await fetch(`${API}/api/v1/klaire/lookup-diagnosis?code=${encodeURIComponent(code.trim().toUpperCase())}`)
+    return res.json()
+  }
+
   async function submitForVetting() {
     const missing = rows.some(r => !r.procedure_code.trim() || !r.diagnosis_code.trim())
     if (missing) {
@@ -400,6 +423,113 @@ export default function BatchDetailPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function EnrolleeCell({ row }: { row: BatchRow }) {
+    const [idInput, setIdInput] = useState('')
+
+    return (
+      <div>
+        <SearchComboBox
+          code={row.enrollee_id}
+          name={row.enrollee_id ? `${row.first_name} ${row.last_name}`.trim() : ''}
+          fetchOptions={fetchEnrollees}
+          placeholder="Search by name…"
+          onSelect={(id, fullName) => {
+            const [first, ...rest] = fullName.split(' ')
+            setRows(prev => prev.map(r => r.row_id !== row.row_id ? r : {
+              ...r, enrollee_id: id, first_name: first || '', last_name: rest.join(' '),
+            }))
+            setDirty(true)
+          }}
+        />
+        <input
+          type="text"
+          value={idInput}
+          onChange={e => { setIdInput(e.target.value.toUpperCase()); updateRow(row.row_id, 'enrollee_id', e.target.value) }}
+          placeholder="or type ID…"
+          className="text-[10px] font-mono w-full border border-transparent hover:border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 mt-0.5 bg-transparent placeholder-slate-300"
+        />
+      </div>
+    )
+  }
+
+  function ProviderCell({ row }: { row: BatchRow }) {
+    return (
+      <div>
+        <SearchComboBox
+          code={row.provider_id}
+          name={row.provider_name}
+          fetchOptions={fetchProviders}
+          placeholder="Search provider…"
+          onSelect={(id, name) => {
+            setRows(prev => prev.map(r => r.row_id !== row.row_id ? r : {
+              ...r, provider_id: id, provider_name: name,
+            }))
+            setDirty(true)
+          }}
+        />
+      </div>
+    )
+  }
+
+  function DiagnosisCell({ row }: { row: BatchRow }) {
+    const [codeInput, setCodeInput] = useState('')
+    const [codeError, setCodeError] = useState('')
+    const [codeLoading, setCodeLoading] = useState(false)
+
+    async function handleCodeLookup() {
+      const c = codeInput.trim()
+      if (!c) return
+      setCodeLoading(true)
+      setCodeError('')
+      try {
+        const data = await lookupDiagnosisCode(c)
+        if (data.found) {
+          updateRow(row.row_id, 'diagnosis_code', data.code)
+          updateRow(row.row_id, 'diagnosis_name', data.name)
+          setShowErrors(false)
+          setCodeInput('')
+        } else {
+          setCodeError(data.error || 'Code not found, try again')
+        }
+      } catch {
+        setCodeError('Lookup failed, try again')
+      } finally {
+        setCodeLoading(false)
+      }
+    }
+
+    return (
+      <div>
+        <SearchComboBox
+          code={row.diagnosis_code}
+          name={row.diagnosis_name}
+          fetchOptions={fetchDiagnoses}
+          placeholder="Search by name…"
+          error={showErrors && !row.diagnosis_code.trim()}
+          onSelect={(code, name) => {
+            updateRow(row.row_id, 'diagnosis_code', code)
+            updateRow(row.row_id, 'diagnosis_name', name)
+            setShowErrors(false)
+          }}
+        />
+        <div className="mt-1 flex items-center gap-1">
+          <input
+            type="text"
+            value={codeInput}
+            onChange={e => { setCodeInput(e.target.value.toUpperCase()); setCodeError('') }}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCodeLookup() } }}
+            onBlur={() => { if (codeInput.trim()) handleCodeLookup() }}
+            placeholder="or type ICD-10 code…"
+            disabled={codeLoading}
+            className="flex-1 text-[10px] font-mono border border-transparent hover:border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 bg-transparent placeholder-slate-300"
+          />
+          {codeLoading && <span className="text-[10px] text-slate-400 shrink-0">…</span>}
+        </div>
+        {codeError && <p className="text-[10px] text-rose-500 mt-0.5 leading-tight">{codeError}</p>}
+      </div>
+    )
   }
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh] text-slate-400 text-sm">Loading batch…</div>
@@ -548,6 +678,28 @@ export default function BatchDetailPage() {
             )}
           </div>
 
+          {/* Total batch amount scorecard */}
+          {(() => {
+            const totalAmt = rows.reduce((s, r) => r.price != null ? s + r.price * r.quantity : s, 0)
+            const priced   = rows.filter(r => r.price != null).length
+            return (
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                  <p className="text-2xl font-bold text-slate-800">{rows.length}</p>
+                  <p className="text-xs text-slate-500 mt-1">Total Rows</p>
+                </div>
+                <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                  <p className="text-2xl font-bold text-blue-600">{priced}</p>
+                  <p className="text-xs text-slate-500 mt-1">Rows Priced</p>
+                </div>
+                <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                  <p className="text-xl font-bold text-emerald-600">{fmtMoney(totalAmt)}</p>
+                  <p className="text-xs text-slate-500 mt-1">Total Batch Amount</p>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Batch Rows Editor */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
@@ -596,12 +748,8 @@ export default function BatchDetailPage() {
                           )}
                         </td>
                         {/* Enrollee */}
-                        <td className="px-3 py-2">
-                          <CellInput value={row.enrollee_id} onChange={v => updateRow(row.row_id, 'enrollee_id', v)} placeholder="Enrollee ID" className="w-28 font-medium" />
-                          <div className="flex gap-1 mt-0.5">
-                            <CellInput value={row.first_name} onChange={v => updateRow(row.row_id, 'first_name', v)} placeholder="First" className="w-16 text-slate-500" />
-                            <CellInput value={row.last_name} onChange={v => updateRow(row.row_id, 'last_name', v)} placeholder="Last" className="w-16 text-slate-500" />
-                          </div>
+                        <td className="px-3 py-2 min-w-[220px]">
+                          <EnrolleeCell row={row} />
                         </td>
                         {/* Procedure */}
                         <td className="px-3 py-2 min-w-[160px]">
@@ -619,24 +767,12 @@ export default function BatchDetailPage() {
                           />
                         </td>
                         {/* Diagnosis */}
-                        <td className="px-3 py-2 min-w-[160px]">
-                          <SearchComboBox
-                            code={row.diagnosis_code}
-                            name={row.diagnosis_name}
-                            fetchOptions={fetchDiagnoses}
-                            placeholder="Search diagnosis…"
-                            error={showErrors && !row.diagnosis_code.trim()}
-                            onSelect={(code, name) => {
-                              updateRow(row.row_id, 'diagnosis_code', code)
-                              updateRow(row.row_id, 'diagnosis_name', name)
-                              setShowErrors(false)
-                            }}
-                          />
+                        <td className="px-3 py-2 min-w-[180px]">
+                          <DiagnosisCell row={row} />
                         </td>
                         {/* Provider */}
-                        <td className="px-3 py-2">
-                          <CellInput value={row.provider_id} onChange={v => updateRow(row.row_id, 'provider_id', v)} placeholder="ID" className="w-16 font-medium" />
-                          <CellInput value={row.provider_name} onChange={v => updateRow(row.row_id, 'provider_name', v)} placeholder="Name" className="w-28 text-slate-500 mt-0.5" />
+                        <td className="px-3 py-2 min-w-[180px]">
+                          <ProviderCell row={row} />
                         </td>
                         {/* Enc. Date From */}
                         <td className="px-3 py-2">

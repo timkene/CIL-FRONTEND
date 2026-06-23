@@ -26,11 +26,25 @@ export function SearchComboBox({
   const [open,      setOpen]      = useState(false)
   const [loading,   setLoading]   = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
+  const [dropStyle, setDropStyle] = useState<React.CSSProperties>({})
+
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef     = useRef<HTMLInputElement>(null)
 
-  // Sync when parent changes name (e.g. PA lookup fills the row)
   useEffect(() => { setQuery(name) }, [name])
+
+  function calcDropPos() {
+    if (!inputRef.current) return
+    const r = inputRef.current.getBoundingClientRect()
+    setDropStyle({
+      position: 'fixed',
+      top:    r.bottom + 2,
+      left:   r.left,
+      width:  Math.max(r.width, 280),
+      zIndex: 9999,
+    })
+  }
 
   const search = useCallback(async (q: string) => {
     if (q.length < 2) { setOptions([]); setOpen(false); return }
@@ -38,7 +52,12 @@ export function SearchComboBox({
     try {
       const results = await fetchOptions(q)
       setOptions(results)
-      setOpen(results.length > 0)
+      if (results.length > 0) {
+        calcDropPos()
+        setOpen(true)
+      } else {
+        setOpen(false)
+      }
       setActiveIdx(-1)
     } catch {
       setOptions([])
@@ -72,8 +91,14 @@ export function SearchComboBox({
     function onOut(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false)
     }
+    // Close when table scrolls so the dropdown doesn't float away from its anchor
+    function onScroll() { setOpen(false) }
     document.addEventListener('mousedown', onOut)
-    return () => document.removeEventListener('mousedown', onOut)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', onOut)
+      window.removeEventListener('scroll', onScroll, true)
+    }
   }, [])
 
   return (
@@ -84,11 +109,12 @@ export function SearchComboBox({
       </div>
       {/* Name search input */}
       <input
+        ref={inputRef}
         type="text"
         value={query}
         onChange={e => handleInput(e.target.value)}
         onKeyDown={handleKeyDown}
-        onFocus={() => { if (query.length >= 2) search(query) }}
+        onFocus={() => { if (query.length >= 2) { calcDropPos(); search(query) } }}
         placeholder={placeholder}
         disabled={disabled}
         className={`w-full text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:border-[#137fec] transition-colors ${
@@ -96,9 +122,12 @@ export function SearchComboBox({
           'border-transparent hover:border-slate-200'
         } ${disabled ? 'opacity-50 cursor-not-allowed bg-transparent' : 'bg-transparent'}`}
       />
-      {/* Dropdown */}
+      {/* Dropdown — position:fixed escapes overflow-x:auto table clipping */}
       {open && (
-        <div className="absolute left-0 top-full mt-0.5 z-50 min-w-[280px] max-h-56 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200">
+        <div
+          style={dropStyle}
+          className="max-h-56 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200"
+        >
           {loading ? (
             <div className="px-3 py-2 text-xs text-slate-400">Searching…</div>
           ) : (
