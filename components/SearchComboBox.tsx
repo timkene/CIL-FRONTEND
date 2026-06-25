@@ -17,6 +17,8 @@ interface SearchComboBoxProps {
   className?: string
 }
 
+const DROP_MAX_H = 224  // max-h-56 = 14rem = 224px
+
 export function SearchComboBox({
   code, name, onSelect, fetchOptions,
   placeholder = 'Search…', error = false, disabled = false, className = '',
@@ -30,6 +32,7 @@ export function SearchComboBox({
 
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const dropdownRef  = useRef<HTMLDivElement>(null)
   const inputRef     = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setQuery(name) }, [name])
@@ -37,13 +40,30 @@ export function SearchComboBox({
   function calcDropPos() {
     if (!inputRef.current) return
     const r = inputRef.current.getBoundingClientRect()
-    setDropStyle({
-      position: 'fixed',
-      top:    r.bottom + 2,
-      left:   r.left,
-      width:  Math.max(r.width, 280),
-      zIndex: 9999,
-    })
+    const spaceBelow = window.innerHeight - r.bottom - 8
+    const spaceAbove = r.top - 8
+    const width = Math.max(r.width, 280)
+
+    // Prefer above: rows accumulate downward so above has more clearance
+    if (spaceAbove >= 100 && (spaceAbove >= spaceBelow || spaceBelow < 120)) {
+      setDropStyle({
+        position: 'fixed',
+        bottom:    window.innerHeight - r.top + 2,
+        left:      r.left,
+        width,
+        maxHeight: Math.min(spaceAbove, DROP_MAX_H),
+        zIndex:    9999,
+      })
+    } else {
+      setDropStyle({
+        position:  'fixed',
+        top:       r.bottom + 2,
+        left:      r.left,
+        width,
+        maxHeight: Math.min(spaceBelow, DROP_MAX_H),
+        zIndex:    9999,
+      })
+    }
   }
 
   const search = useCallback(async (q: string) => {
@@ -64,7 +84,7 @@ export function SearchComboBox({
     } finally {
       setLoading(false)
     }
-  }, [fetchOptions])
+  }, [fetchOptions])  // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleInput(q: string) {
     setQuery(q)
@@ -91,8 +111,11 @@ export function SearchComboBox({
     function onOut(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false)
     }
-    // Close when table scrolls so the dropdown doesn't float away from its anchor
-    function onScroll() { setOpen(false) }
+    function onScroll(e: Event) {
+      // Scrolling inside the dropdown list — let it scroll, do not close
+      if (dropdownRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
     document.addEventListener('mousedown', onOut)
     window.addEventListener('scroll', onScroll, true)
     return () => {
@@ -118,15 +141,15 @@ export function SearchComboBox({
         placeholder={placeholder}
         disabled={disabled}
         className={`w-full text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:border-[#137fec] transition-colors ${
-          error   ? 'border-rose-400 bg-rose-50/40' :
-          'border-transparent hover:border-slate-200'
+          error ? 'border-rose-400 bg-rose-50/40' : 'border-transparent hover:border-slate-200'
         } ${disabled ? 'opacity-50 cursor-not-allowed bg-transparent' : 'bg-transparent'}`}
       />
-      {/* Dropdown — position:fixed escapes overflow-x:auto table clipping */}
+      {/* Dropdown — position:fixed escapes overflow clipping; smart-flips above/below */}
       {open && (
         <div
+          ref={dropdownRef}
           style={dropStyle}
-          className="max-h-56 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200"
+          className="overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200"
         >
           {loading ? (
             <div className="px-3 py-2 text-xs text-slate-400">Searching…</div>

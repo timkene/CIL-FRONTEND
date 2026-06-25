@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { SearchComboBox, type ComboOption } from '@/components/SearchComboBox'
 import { Button, Badge, Card, useToast } from '@/components/ui'
 import { nhiaFetch } from '@/lib/nhia-fetch'
@@ -171,7 +172,15 @@ export default function BatchDetailPage() {
   const [showErrors, setShowErrors] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [batchDateSubmitted, setBatchDateSubmitted] = useState('')
-  const enrolleeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const enrolleeDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tableContainerRef    = useRef<HTMLDivElement>(null)
+
+  const rowVirtualizer = useVirtualizer({
+    count:           rows.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize:    () => 80,  // ~80px per row; virtualizer will adjust on measurement
+    overscan:        5,
+  })
 
   const loadBatch = useCallback(async () => {
     try {
@@ -252,16 +261,17 @@ export default function BatchDetailPage() {
       return [...prev, {
         ...emptyRow(),
         date_submitted: batchDateSubmitted,
-        // Copy context from last row so staff don't re-enter repeated fields
-        enrollee_id:   last?.enrollee_id  || '',
-        first_name:    last?.first_name   || '',
-        last_name:     last?.last_name    || '',
-        pa_number:     last?.pa_number    || '',
-        provider_id:   last?.provider_id  || '',
+        enrollee_id:   last?.enrollee_id   || '',
+        first_name:    last?.first_name    || '',
+        last_name:     last?.last_name     || '',
+        pa_number:     last?.pa_number     || '',
+        provider_id:   last?.provider_id   || '',
         provider_name: last?.provider_name || '',
       }]
     })
     setDirty(true)
+    // Scroll the new row into view after React renders it
+    setTimeout(() => rowVirtualizer.scrollToIndex(rows.length, { align: 'end' }), 50)
   }
 
   function updateRow(rowId: string, field: keyof BatchRow, value: string | number | null) {
@@ -718,124 +728,142 @@ export default function BatchDetailPage() {
               <div className="py-10 text-center text-slate-400 text-sm">
                 No rows yet — look up a PA number above, or add rows manually
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                      <th className="text-left px-3 py-2.5">PA #</th>
-                      <th className="text-left px-3 py-2.5">Enrollee</th>
-                      <th className="text-left px-3 py-2.5">Procedure</th>
-                      <th className="text-left px-3 py-2.5">Diagnosis</th>
-                      <th className="text-left px-3 py-2.5">Provider</th>
-                      <th className="text-left px-3 py-2.5">Enc. Date From</th>
-                      <th className="text-left px-3 py-2.5">Enc. Date To</th>
-                      <th className="text-left px-3 py-2.5">Date Submitted</th>
-                      <th className="text-right px-3 py-2.5">Unit Price (₦)</th>
-                      <th className="text-right px-3 py-2.5">Qty</th>
-                      <th className="text-right px-3 py-2.5">Total (₦)</th>
-                      <th className="px-3 py-2.5" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(row => (
-                      <tr key={row.row_id} className={`border-b border-slate-100 last:border-0 align-top ${row.is_manual ? 'bg-amber-50/40 hover:bg-amber-50/60' : 'hover:bg-slate-50/40'}`}>
-                        {/* PA Number */}
-                        <td className="px-3 py-2">
-                          <CellInput value={row.pa_number} onChange={v => updateRow(row.row_id, 'pa_number', v)} placeholder="PA #" className="w-24" />
-                          {row.is_manual && (
-                            <Badge variant="warning" size="sm" className="mt-1">MANUAL</Badge>
-                          )}
-                        </td>
-                        {/* Enrollee */}
-                        <td className="px-3 py-2 min-w-[220px]">
-                          <EnrolleeCell row={row} />
-                        </td>
-                        {/* Procedure */}
-                        <td className="px-3 py-2 min-w-[160px]">
-                          <SearchComboBox
-                            code={row.procedure_code}
-                            name={row.procedure_name}
-                            fetchOptions={fetchProcedures}
-                            placeholder="Search procedure…"
-                            error={showErrors && !row.procedure_code.trim()}
-                            onSelect={(code, name) => {
-                              updateRow(row.row_id, 'procedure_code', code)
-                              updateRow(row.row_id, 'procedure_name', name)
-                              setShowErrors(false)
-                            }}
-                          />
-                        </td>
-                        {/* Diagnosis */}
-                        <td className="px-3 py-2 min-w-[180px]">
-                          <DiagnosisCell row={row} />
-                        </td>
-                        {/* Provider */}
-                        <td className="px-3 py-2 min-w-[180px]">
-                          <ProviderCell row={row} />
-                        </td>
-                        {/* Enc. Date From */}
-                        <td className="px-3 py-2">
-                          <input
-                            type="date"
-                            value={row.encounter_date_from}
-                            onChange={e => updateRow(row.row_id, 'encounter_date_from', e.target.value)}
-                            className="border border-transparent hover:border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32"
-                          />
-                        </td>
-                        {/* Enc. Date To */}
-                        <td className="px-3 py-2">
-                          <input
-                            type="date"
-                            value={row.encounter_date_to}
-                            onChange={e => updateRow(row.row_id, 'encounter_date_to', e.target.value)}
-                            className="border border-transparent hover:border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32"
-                          />
-                        </td>
-                        {/* Date Submitted */}
-                        <td className="px-3 py-2">
-                          <input
-                            type="date"
-                            value={row.date_submitted}
-                            onChange={e => updateRow(row.row_id, 'date_submitted', e.target.value)}
-                            className="border border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32"
-                          />
-                        </td>
-                        {/* Price */}
-                        <td className="px-3 py-2 text-right">
-                          <input
-                            type="number"
-                            value={row.price ?? ''}
-                            onChange={e => updateRow(row.row_id, 'price', e.target.value ? parseFloat(e.target.value) : null)}
-                            placeholder="0.00"
-                            className="w-24 border border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-2 py-1 text-right text-xs"
-                          />
-                        </td>
-                        {/* Qty */}
-                        <td className="px-3 py-2 text-right">
-                          <input
-                            type="number"
-                            value={row.quantity}
-                            min={1}
-                            onChange={e => updateRow(row.row_id, 'quantity', parseInt(e.target.value) || 1)}
-                            className="w-14 border border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-2 py-1 text-right text-xs"
-                          />
-                        </td>
-                        {/* Total */}
-                        <td className="px-3 py-2 text-right text-slate-700 font-medium tabular-nums">
-                          {row.price != null ? fmtMoney(row.price * row.quantity) : '—'}
-                        </td>
-                        {/* Delete */}
-                        <td className="px-3 py-2 text-right">
-                          <button onClick={() => deleteRow(row.row_id)}
-                            className="text-slate-300 hover:text-rose-500 transition-colors text-lg leading-none">×</button>
-                        </td>
+            ) : (() => {
+              const virtualRows  = rowVirtualizer.getVirtualItems()
+              const totalHeight  = rowVirtualizer.getTotalSize()
+              const paddingTop   = virtualRows.length > 0 ? virtualRows[0].start : 0
+              const paddingBottom = virtualRows.length > 0
+                ? totalHeight - virtualRows[virtualRows.length - 1].end : 0
+              return (
+                /* Scrollable container — virtualizer renders only visible rows */
+                <div
+                  ref={tableContainerRef}
+                  style={{ maxHeight: 'calc(100vh - 380px)', minHeight: '300px' }}
+                  className="overflow-auto"
+                >
+                  <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+                    {/* Sticky header stays visible as user scrolls */}
+                    <thead className="sticky top-0 z-10 bg-slate-50">
+                      <tr className="border-b border-slate-200 text-slate-500 font-semibold">
+                        <th className="text-left px-3 py-2.5">PA #</th>
+                        <th className="text-left px-3 py-2.5">Enrollee</th>
+                        <th className="text-left px-3 py-2.5">Procedure</th>
+                        <th className="text-left px-3 py-2.5">Diagnosis</th>
+                        <th className="text-left px-3 py-2.5">Provider</th>
+                        <th className="text-left px-3 py-2.5">Enc. Date From</th>
+                        <th className="text-left px-3 py-2.5">Enc. Date To</th>
+                        <th className="text-left px-3 py-2.5">Date Submitted</th>
+                        <th className="text-right px-3 py-2.5">Unit Price (₦)</th>
+                        <th className="text-right px-3 py-2.5">Qty</th>
+                        <th className="text-right px-3 py-2.5">Total (₦)</th>
+                        <th className="px-3 py-2.5" />
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {/* Top spacer maintains scroll position for off-screen rows */}
+                      {paddingTop > 0 && (
+                        <tr><td colSpan={12} style={{ height: paddingTop, padding: 0 }} /></tr>
+                      )}
+                      {virtualRows.map(virtualRow => {
+                        const row = rows[virtualRow.index]
+                        return (
+                          <tr
+                            key={row.row_id}
+                            data-index={virtualRow.index}
+                            ref={rowVirtualizer.measureElement}
+                            className={`border-b border-slate-100 align-top ${row.is_manual ? 'bg-amber-50/40 hover:bg-amber-50/60' : 'hover:bg-slate-50/40'}`}
+                          >
+                            {/* PA Number */}
+                            <td className="px-3 py-2">
+                              <CellInput value={row.pa_number} onChange={v => updateRow(row.row_id, 'pa_number', v)} placeholder="PA #" className="w-24" />
+                              {row.is_manual && (
+                                <Badge variant="warning" size="sm" className="mt-1">MANUAL</Badge>
+                              )}
+                            </td>
+                            {/* Enrollee */}
+                            <td className="px-3 py-2 min-w-[220px]">
+                              <EnrolleeCell row={row} />
+                            </td>
+                            {/* Procedure */}
+                            <td className="px-3 py-2 min-w-[160px]">
+                              <SearchComboBox
+                                code={row.procedure_code}
+                                name={row.procedure_name}
+                                fetchOptions={fetchProcedures}
+                                placeholder="Search procedure…"
+                                error={showErrors && !row.procedure_code.trim()}
+                                onSelect={(code, name) => {
+                                  updateRow(row.row_id, 'procedure_code', code)
+                                  updateRow(row.row_id, 'procedure_name', name)
+                                  setShowErrors(false)
+                                }}
+                              />
+                            </td>
+                            {/* Diagnosis */}
+                            <td className="px-3 py-2 min-w-[180px]">
+                              <DiagnosisCell row={row} />
+                            </td>
+                            {/* Provider */}
+                            <td className="px-3 py-2 min-w-[180px]">
+                              <ProviderCell row={row} />
+                            </td>
+                            {/* Enc. Date From */}
+                            <td className="px-3 py-2">
+                              <input type="date" value={row.encounter_date_from}
+                                onChange={e => updateRow(row.row_id, 'encounter_date_from', e.target.value)}
+                                className="border border-transparent hover:border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32"
+                              />
+                            </td>
+                            {/* Enc. Date To */}
+                            <td className="px-3 py-2">
+                              <input type="date" value={row.encounter_date_to}
+                                onChange={e => updateRow(row.row_id, 'encounter_date_to', e.target.value)}
+                                className="border border-transparent hover:border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32"
+                              />
+                            </td>
+                            {/* Date Submitted */}
+                            <td className="px-3 py-2">
+                              <input type="date" value={row.date_submitted}
+                                onChange={e => updateRow(row.row_id, 'date_submitted', e.target.value)}
+                                className="border border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32"
+                              />
+                            </td>
+                            {/* Price */}
+                            <td className="px-3 py-2 text-right">
+                              <input type="number" value={row.price ?? ''}
+                                onChange={e => updateRow(row.row_id, 'price', e.target.value ? parseFloat(e.target.value) : null)}
+                                placeholder="0.00"
+                                className="w-24 border border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-2 py-1 text-right text-xs"
+                              />
+                            </td>
+                            {/* Qty */}
+                            <td className="px-3 py-2 text-right">
+                              <input type="number" value={row.quantity} min={1}
+                                onChange={e => updateRow(row.row_id, 'quantity', parseInt(e.target.value) || 1)}
+                                className="w-14 border border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-2 py-1 text-right text-xs"
+                              />
+                            </td>
+                            {/* Total */}
+                            <td className="px-3 py-2 text-right text-slate-700 font-medium tabular-nums">
+                              {row.price != null ? fmtMoney(row.price * row.quantity) : '—'}
+                            </td>
+                            {/* Delete */}
+                            <td className="px-3 py-2 text-right">
+                              <button onClick={() => deleteRow(row.row_id)}
+                                className="text-slate-300 hover:text-rose-500 transition-colors text-lg leading-none">×</button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {/* Bottom spacer */}
+                      {paddingBottom > 0 && (
+                        <tr><td colSpan={12} style={{ height: paddingBottom, padding: 0 }} /></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
           </div>
         </>
       )}
