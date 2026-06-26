@@ -342,6 +342,18 @@ export default function BatchDetailPage() {
     }
   }
 
+  async function resetBatch() {
+    if (!batch) return
+    try {
+      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batchId}/reset`, { method: 'POST' })
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Reset failed') }
+      toast.success('Batch reset to OPEN — you can now re-submit')
+      await loadBatch()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Reset failed')
+    }
+  }
+
   async function reopenBatch() {
     if (!batch) return
     try {
@@ -604,6 +616,11 @@ export default function BatchDetailPage() {
           {canDelete && (
             <Button variant="danger" onClick={deleteBatch} disabled={deleting}>
               {deleting ? 'Deleting…' : 'Delete'}
+            </Button>
+          )}
+          {isProcessing && (
+            <Button variant="outline" onClick={resetBatch}>
+              Reset to Open
             </Button>
           )}
           {isVetted && (
