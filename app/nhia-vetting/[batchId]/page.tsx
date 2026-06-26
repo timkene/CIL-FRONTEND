@@ -77,7 +77,7 @@ interface VettingResult {
 interface Batch {
   batch_id: string
   batch_name: string
-  status: 'OPEN' | 'VETTED' | 'ACCEPTED' | 'REJECTED'
+  status: 'OPEN' | 'PROCESSING' | 'VETTED' | 'ACCEPTED' | 'REJECTED'
   created_by: string
   created_at: string
   encounter_date: string
@@ -99,10 +99,11 @@ const DECISION_STYLE: Record<string, string> = {
 }
 
 const STATUS_STYLE: Record<string, string> = {
-  OPEN:     'bg-blue-50 text-blue-700 border border-blue-200',
-  VETTED:   'bg-amber-50 text-amber-700 border border-amber-200',
-  ACCEPTED: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  REJECTED: 'bg-rose-50 text-rose-700 border border-rose-200',
+  OPEN:       'bg-blue-50 text-blue-700 border border-blue-200',
+  PROCESSING: 'bg-violet-50 text-violet-700 border border-violet-200',
+  VETTED:     'bg-amber-50 text-amber-700 border border-amber-200',
+  ACCEPTED:   'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  REJECTED:   'bg-rose-50 text-rose-700 border border-rose-200',
 }
 
 function fmtMoney(n: number | null | undefined) {
@@ -424,7 +425,8 @@ export default function BatchDetailPage() {
         }
         return
       }
-      toast.success('Batch submitted for vetting successfully')
+      // 202 — vetting is running in the background; reload to show PROCESSING state
+      toast.success('Vetting started — results will appear automatically when ready')
       await loadBatch()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Submit failed'
@@ -434,6 +436,15 @@ export default function BatchDetailPage() {
       setSubmitting(false)
     }
   }
+
+  // Poll every 4 s while batch is PROCESSING
+  useEffect(() => {
+    if (!batch || batch.status !== 'PROCESSING') return
+    const id = setInterval(async () => {
+      await loadBatch()
+    }, 4000)
+    return () => clearInterval(id)
+  }, [batch?.status, loadBatch])
 
   function EnrolleeCell({ row }: { row: BatchRow }) {
     const [idInput, setIdInput] = useState('')
@@ -545,9 +556,10 @@ export default function BatchDetailPage() {
   if (loading) return <div className="flex items-center justify-center min-h-[60vh] text-slate-400 text-sm">Loading batch…</div>
   if (!batch) return <div className="p-6 text-rose-600 text-sm">{error || 'Batch not found'} <Link href="/nhia-vetting" className="ml-4 text-[#137fec] underline">Back</Link></div>
 
-  const isOpen = batch.status === 'OPEN'
-  const isVetted = batch.status === 'VETTED'
-  const canDelete = batch.status !== 'ACCEPTED'
+  const isOpen       = batch.status === 'OPEN'
+  const isProcessing = batch.status === 'PROCESSING'
+  const isVetted     = batch.status === 'VETTED'
+  const canDelete    = batch.status !== 'ACCEPTED'
 
   return (
     <div className="p-6 space-y-6">
@@ -559,9 +571,10 @@ export default function BatchDetailPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900">{batch.batch_name}</h1>
               <Badge variant={
-                batch.status === 'OPEN' ? 'info' :
-                batch.status === 'VETTED' ? 'warning' :
-                batch.status === 'ACCEPTED' ? 'success' :
+                batch.status === 'OPEN'       ? 'info' :
+                batch.status === 'PROCESSING' ? 'info' :
+                batch.status === 'VETTED'     ? 'warning' :
+                batch.status === 'ACCEPTED'   ? 'success' :
                 'error'
               }>{batch.status}</Badge>
             </div>
@@ -612,6 +625,20 @@ export default function BatchDetailPage() {
       </div>
 
       {error && <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 whitespace-pre-line">{error}</div>}
+
+      {/* ── PROCESSING: spinner banner ── */}
+      {isProcessing && (
+        <div className="flex items-center gap-3 bg-violet-50 border border-violet-200 rounded-xl px-5 py-4">
+          <svg className="animate-spin h-5 w-5 text-violet-500 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <div>
+            <p className="text-sm font-semibold text-violet-800">Vetting in progress…</p>
+            <p className="text-xs text-violet-600 mt-0.5">This page will refresh automatically when results are ready. You can safely leave and come back.</p>
+          </div>
+        </div>
+      )}
 
       {/* ── OPEN: PA lookup + editor ── */}
       {isOpen && (
@@ -869,7 +896,7 @@ export default function BatchDetailPage() {
       )}
 
       {/* ── VETTED / ACCEPTED / REJECTED: vetting results ── */}
-      {batch.status !== 'OPEN' && batch.vetting_results && (
+      {batch.status !== 'OPEN' && batch.status !== 'PROCESSING' && batch.vetting_results && (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">

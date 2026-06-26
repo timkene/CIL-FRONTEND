@@ -10,7 +10,7 @@ const API = process.env.NEXT_PUBLIC_NHIA_API_URL || 'http://localhost:8005'
 interface Batch {
   batch_id: string
   batch_name: string
-  status: 'OPEN' | 'VETTED' | 'ACCEPTED' | 'REJECTED'
+  status: 'OPEN' | 'PROCESSING' | 'VETTED' | 'ACCEPTED' | 'REJECTED'
   created_by: string
   created_at: string
   encounter_date: string
@@ -21,10 +21,11 @@ interface Batch {
 }
 
 const STATUS_STYLE: Record<string, string> = {
-  OPEN:     'bg-blue-50 text-blue-700 border border-blue-200',
-  VETTED:   'bg-amber-50 text-amber-700 border border-amber-200',
-  ACCEPTED: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  REJECTED: 'bg-rose-50 text-rose-700 border border-rose-200',
+  OPEN:       'bg-blue-50 text-blue-700 border border-blue-200',
+  PROCESSING: 'bg-violet-50 text-violet-700 border border-violet-200',
+  VETTED:     'bg-amber-50 text-amber-700 border border-amber-200',
+  ACCEPTED:   'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  REJECTED:   'bg-rose-50 text-rose-700 border border-rose-200',
 }
 
 function fmt(n: number) {
