@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, Fragment } from 'react'
+import { useEffect, useState, Fragment, useMemo } from 'react'
 import Link from 'next/link'
 import { Button, Badge, useToast } from '@/components/ui'
 import { nhiaFetch } from '@/lib/nhia-fetch'
@@ -7,6 +7,18 @@ import { nhiaFetch } from '@/lib/nhia-fetch'
 const API = process.env.NEXT_PUBLIC_NHIA_API_URL || 'http://localhost:8005'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface BatchRow {
+  row_id: string
+  pa_number: string
+  enrollee_id: string
+  first_name: string
+  last_name: string
+  procedure_code: string
+  provider_name: string
+  encounter_date_from: string
+  price: number | null
+}
 
 interface LineItem {
   procedure_code:     string
@@ -83,7 +95,31 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
   const [reviewer,     setReviewer]     = useState('Supervisor')
   const [notes,        setNotes]        = useState('')
   const [submitting,   setSubmitting]   = useState(false)
+  const [batchRows,    setBatchRows]    = useState<BatchRow[]>([])
+  const [rowsLoaded,   setRowsLoaded]   = useState(false)
   const toast = useToast()
+
+  // Lazy-load full batch rows when the card is first expanded
+  useEffect(() => {
+    if (expanded && !rowsLoaded) {
+      nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}`)
+        .then(r => r.json())
+        .then(data => { setBatchRows(data.rows || []); setRowsLoaded(true) })
+        .catch(() => setRowsLoaded(true))
+    }
+  }, [expanded, rowsLoaded, batch.batch_id])
+
+  const rowByKey = useMemo(() => {
+    const m = new Map<string, BatchRow>()
+    batchRows.forEach(r => m.set(`${r.enrollee_id}|${r.procedure_code}`, r))
+    return m
+  }, [batchRows])
+
+  const rowByEnrollee = useMemo(() => {
+    const m = new Map<string, BatchRow>()
+    batchRows.forEach(r => { if (!m.has(r.enrollee_id)) m.set(r.enrollee_id, r) })
+    return m
+  }, [batchRows])
 
   // Effective decision for a row: override if present, else AI's decision
   function effectiveDecision(eid: string, item: LineItem): 'APPROVE' | 'DENY' {
@@ -253,10 +289,24 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
             {(batch.vetting_results ?? []).map((result, gi) => (
               <div key={gi}>
                 {/* Enrollee subheader */}
-                <div className="flex items-center justify-between px-5 py-2.5 bg-slate-50">
-                  <span className="text-xs font-bold text-slate-600">Enrollee: {result.enrollee_id}</span>
-                  <span className="text-xs font-semibold text-emerald-600">{fmtMoney(result.total_approved_amount)}</span>
-                </div>
+                {(() => {
+                  const hdr = rowByEnrollee.get(result.enrollee_id ?? '')
+                  const name = hdr ? `${hdr.first_name} ${hdr.last_name}`.trim() : ''
+                  return (
+                    <div className="flex items-center justify-between px-5 py-2.5 bg-slate-50 flex-wrap gap-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {hdr?.pa_number && (
+                          <span className="text-[10px] font-mono bg-slate-200 text-slate-600 rounded px-2 py-0.5">{hdr.pa_number}</span>
+                        )}
+                        <span className="text-xs font-bold text-slate-600">{name || result.enrollee_id}</span>
+                        {name && <span className="text-[10px] text-slate-400">{result.enrollee_id}</span>}
+                        {hdr?.provider_name && <span className="text-[10px] text-slate-500">· {hdr.provider_name}</span>}
+                        {hdr?.encounter_date_from && <span className="text-[10px] text-slate-400">· {hdr.encounter_date_from}</span>}
+                      </div>
+                      <span className="text-xs font-semibold text-emerald-600">{fmtMoney(result.total_approved_amount)}</span>
+                    </div>
+                  )
+                })()}
 
                 {result.error ? (
                   <p className="px-5 py-3 text-xs text-rose-600">Error: {result.error}</p>
@@ -293,8 +343,10 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                         const dispPrice    = priceEdits[k] ?? item.adjusted_price    ?? item.stated_price
                         const dispTotal    = effectiveTotal(eid, item)
                         const hasEdit      = isOverridden || hasQtyEdit || hasPriceEdit
-                        const statedTotal  = item.stated_price != null
-                          ? Math.round((item.stated_price * (item.stated_quantity ?? 1)) * 100) / 100
+                        const batchRow     = rowByKey.get(`${eid}|${item.procedure_code}`)
+                        const effectiveStatedPrice = item.stated_price ?? batchRow?.price ?? null
+                        const statedTotal  = effectiveStatedPrice != null
+                          ? Math.round((effectiveStatedPrice * (item.stated_quantity ?? 1)) * 100) / 100
                           : null
                         return (
                           <Fragment key={lineKey}>
@@ -313,7 +365,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                                 <p className="text-slate-400 truncate max-w-[140px]" title={item.diagnosis_name}>{item.diagnosis_name}</p>
                               </td>
                               {/* Stated — read-only reference */}
-                              <td className="px-4 py-2.5 text-right text-[11px] text-slate-400 bg-slate-50/40">{fmtMoney(item.stated_price)}</td>
+                              <td className="px-4 py-2.5 text-right text-[11px] text-slate-400 bg-slate-50/40">{fmtMoney(effectiveStatedPrice)}</td>
                               <td className="px-4 py-2.5 text-right text-[11px] text-slate-400 bg-slate-50/40">{item.stated_quantity ?? '—'}</td>
                               <td className="px-4 py-2.5 text-right text-[11px] text-slate-500 font-medium bg-slate-50/40">{fmtMoney(statedTotal)}</td>
 

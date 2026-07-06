@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -182,6 +182,19 @@ export default function BatchDetailPage() {
     estimateSize:    () => 80,  // ~80px per row; virtualizer will adjust on measurement
     overscan:        5,
   })
+
+  // Lookup maps for enriching vetting result rows with batch row context
+  const rowByKey = useMemo(() => {
+    const m = new Map<string, BatchRow>()
+    if (batch?.rows) batch.rows.forEach(r => m.set(`${r.enrollee_id}|${r.procedure_code}`, r))
+    return m
+  }, [batch])
+
+  const rowByEnrollee = useMemo(() => {
+    const m = new Map<string, BatchRow>()
+    if (batch?.rows) batch.rows.forEach(r => { if (!m.has(r.enrollee_id)) m.set(r.enrollee_id, r) })
+    return m
+  }, [batch])
 
   const loadBatch = useCallback(async () => {
     try {
@@ -939,19 +952,31 @@ export default function BatchDetailPage() {
 
           {batch.vetting_results.map((result, gi) => (
             <div key={gi} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-bold text-slate-700">Enrollee: {result.enrollee_id}</span>
-                  {result.overall_decision && (
-                    <Badge variant={result.overall_decision === 'APPROVE' ? 'success' : 'error'}>
-                      {result.overall_decision}
-                    </Badge>
-                  )}
-                </div>
-                {result.total_approved_amount != null && (
-                  <span className="text-sm font-bold text-emerald-600">{fmtMoney(result.total_approved_amount)}</span>
-                )}
-              </div>
+              {(() => {
+                const hdr = rowByEnrollee.get(result.enrollee_id ?? '')
+                const name = hdr ? `${hdr.first_name} ${hdr.last_name}`.trim() : ''
+                return (
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50 flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {hdr?.pa_number && (
+                        <span className="text-[10px] font-mono bg-slate-200 text-slate-600 rounded px-2 py-0.5">{hdr.pa_number}</span>
+                      )}
+                      <span className="text-sm font-bold text-slate-700">{name || result.enrollee_id}</span>
+                      {name && <span className="text-xs text-slate-400">{result.enrollee_id}</span>}
+                      {hdr?.provider_name && <span className="text-xs text-slate-500">· {hdr.provider_name}</span>}
+                      {hdr?.encounter_date_from && <span className="text-xs text-slate-400">· {hdr.encounter_date_from}</span>}
+                      {result.overall_decision && (
+                        <Badge variant={result.overall_decision === 'APPROVE' ? 'success' : 'error'}>
+                          {result.overall_decision}
+                        </Badge>
+                      )}
+                    </div>
+                    {result.total_approved_amount != null && (
+                      <span className="text-sm font-bold text-emerald-600">{fmtMoney(result.total_approved_amount)}</span>
+                    )}
+                  </div>
+                )
+              })()}
 
               {result.error ? (
                 <div className="px-5 py-4 text-sm text-rose-600">Vetting error: {result.error}</div>
@@ -970,7 +995,10 @@ export default function BatchDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(result.line_items || []).map((item, li) => (
+                    {(result.line_items || []).map((item, li) => {
+                      const batchRow = rowByKey.get(`${result.enrollee_id ?? ''}|${item.procedure_code}`)
+                      const effectiveStatedPrice = item.stated_price ?? batchRow?.price ?? null
+                      return (
                       <React.Fragment key={`${gi}-${li}`}>
                         <tr
                           className="border-b border-slate-50 hover:bg-slate-50/60 cursor-pointer"
@@ -983,7 +1011,7 @@ export default function BatchDetailPage() {
                             <p className="font-medium text-slate-800">{item.diagnosis_code}</p>
                             <p className="text-slate-400 truncate max-w-[180px]">{item.diagnosis_name}</p>
                           </td>
-                          <td className="px-4 py-2.5 text-right text-slate-600">{fmtMoney(item.stated_price)}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-600">{fmtMoney(effectiveStatedPrice)}</td>
                           <td className="px-4 py-2.5 text-right text-slate-600">{fmtMoney(item.tariff_price)}</td>
                           <td className="px-4 py-2.5 text-right text-slate-700">
                             {item.stated_quantity != null && item.adjusted_quantity != null && item.stated_quantity !== item.adjusted_quantity ? (
@@ -1019,7 +1047,8 @@ export default function BatchDetailPage() {
                           </tr>
                         )}
                       </React.Fragment>
-                    ))}
+                    )
+                    })}
                   </tbody>
                 </table>
               )}
