@@ -106,6 +106,17 @@ const STATUS_STYLE: Record<string, string> = {
   REJECTED:   'bg-rose-50 text-rose-700 border border-rose-200',
 }
 
+const REQUIRED_BATCH_ROW_FIELDS: { key: keyof BatchRow; label: string }[] = [
+  { key: 'pa_number',           label: 'PA #' },
+  { key: 'enrollee_id',         label: 'Enrollee' },
+  { key: 'procedure_code',      label: 'Procedure' },
+  { key: 'diagnosis_code',      label: 'Diagnosis' },
+  { key: 'provider_id',         label: 'Provider' },
+  { key: 'encounter_date_from', label: 'Enc. Date From' },
+  { key: 'encounter_date_to',   label: 'Enc. Date To' },
+  { key: 'date_submitted',      label: 'Date Submitted' },
+]
+
 function fmtMoney(n: number | null | undefined) {
   if (n == null) return '—'
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -426,10 +437,20 @@ export default function BatchDetailPage() {
   }
 
   async function submitForVetting() {
-    const missing = rows.some(r => !r.procedure_code.trim() || !r.diagnosis_code.trim())
-    if (missing) {
+    const rowErrors: string[] = []
+    rows.forEach((r, i) => {
+      const missing: string[] = REQUIRED_BATCH_ROW_FIELDS
+        .filter(f => !String(r[f.key] ?? '').trim())
+        .map(f => f.label)
+      if (r.price == null) missing.push('Unit Price')
+      if (missing.length > 0)
+        rowErrors.push(`Row ${i + 1}: ${missing.join(', ')}`)
+    })
+    if (rowErrors.length > 0) {
       setShowErrors(true)
-      toast.error('Please fill in all procedure and diagnosis codes')
+      const count = rowErrors.length
+      toast.error(`${count} row${count > 1 ? 's have' : ' has'} incomplete data — fix highlighted fields before submitting`)
+      setError(rowErrors.join('\n'))
       return
     }
     if (dirty) await saveRows()
@@ -481,6 +502,7 @@ export default function BatchDetailPage() {
           name={row.enrollee_id ? `${row.first_name} ${row.last_name}`.trim() : ''}
           fetchOptions={fetchEnrollees}
           placeholder="Search by name…"
+          error={showErrors && !row.enrollee_id.trim()}
           onSelect={(id, fullName) => {
             const [first, ...rest] = fullName.split(' ')
             setRows(prev => prev.map(r => r.row_id !== row.row_id ? r : {
@@ -508,6 +530,7 @@ export default function BatchDetailPage() {
           name={row.provider_name}
           fetchOptions={fetchProviders}
           placeholder="Search provider…"
+          error={showErrors && !row.provider_id.trim()}
           onSelect={(id, name) => {
             setRows(prev => prev.map(r => r.row_id !== row.row_id ? r : {
               ...r, provider_id: id, provider_name: name,
@@ -832,7 +855,7 @@ export default function BatchDetailPage() {
                           >
                             {/* PA Number */}
                             <td className="px-3 py-2">
-                              <CellInput value={row.pa_number} onChange={v => updateRow(row.row_id, 'pa_number', v)} placeholder="PA #" className="w-24" />
+                              <CellInput value={row.pa_number} onChange={v => updateRow(row.row_id, 'pa_number', v)} placeholder="PA #" className="w-24" error={showErrors && !row.pa_number.trim()} />
                               {row.is_manual && (
                                 <Badge variant="warning" size="sm" className="mt-1">MANUAL</Badge>
                               )}
@@ -868,21 +891,21 @@ export default function BatchDetailPage() {
                             <td className="px-3 py-2">
                               <input type="date" value={row.encounter_date_from}
                                 onChange={e => updateRow(row.row_id, 'encounter_date_from', e.target.value)}
-                                className="border border-transparent hover:border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32"
+                                className={`border focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32 ${showErrors && !row.encounter_date_from ? 'border-rose-400 bg-rose-50/40' : 'border-transparent hover:border-slate-200'}`}
                               />
                             </td>
                             {/* Enc. Date To */}
                             <td className="px-3 py-2">
                               <input type="date" value={row.encounter_date_to}
                                 onChange={e => updateRow(row.row_id, 'encounter_date_to', e.target.value)}
-                                className="border border-transparent hover:border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32"
+                                className={`border focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32 ${showErrors && !row.encounter_date_to ? 'border-rose-400 bg-rose-50/40' : 'border-transparent hover:border-slate-200'}`}
                               />
                             </td>
                             {/* Date Submitted */}
                             <td className="px-3 py-2">
                               <input type="date" value={row.date_submitted}
                                 onChange={e => updateRow(row.row_id, 'date_submitted', e.target.value)}
-                                className="border border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32"
+                                className={`border focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32 ${showErrors && !row.date_submitted ? 'border-rose-400 bg-rose-50/40' : 'border-slate-200'}`}
                               />
                             </td>
                             {/* Price */}
@@ -890,7 +913,7 @@ export default function BatchDetailPage() {
                               <input type="number" value={row.price ?? ''}
                                 onChange={e => updateRow(row.row_id, 'price', e.target.value ? parseFloat(e.target.value) : null)}
                                 placeholder="0.00"
-                                className="w-24 border border-slate-200 focus:border-[#137fec] focus:outline-none rounded px-2 py-1 text-right text-xs"
+                                className={`w-24 border focus:border-[#137fec] focus:outline-none rounded px-2 py-1 text-right text-xs ${showErrors && row.price == null ? 'border-rose-400 bg-rose-50/40' : 'border-slate-200'}`}
                               />
                             </td>
                             {/* Qty */}
