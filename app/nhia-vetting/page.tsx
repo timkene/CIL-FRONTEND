@@ -33,7 +33,7 @@ function fmtMoney(n: number) {
 async function fetchProviders(q: string): Promise<ComboOption[]> {
   if (q.length < 2) return []
   try {
-    const res = await fetch(`${API}/api/v1/klaire/providers?q=${encodeURIComponent(q)}&limit=20`)
+    const res = await fetch(`${API}/api/v1/klaire/search-providers?q=${encodeURIComponent(q)}&limit=20`)
     const data = await res.json()
     return (data.providers || []).map((p: { provider_id: string; provider_name: string }) => ({
       code:  p.provider_id,
