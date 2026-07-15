@@ -67,6 +67,7 @@ interface LineItem {
 
 interface VettingResult {
   enrollee_id?: string
+  encounter_date?: string
   overall_decision?: string
   overall_status?: string
   total_approved_amount?: number
@@ -184,6 +185,9 @@ export default function BatchDetailPage() {
   const [showErrors, setShowErrors] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [batchDateSubmitted, setBatchDateSubmitted] = useState('')
+  const [revetMode, setRevetMode] = useState(false)
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set())
+  const [revetting, setRevetting] = useState(false)
   const enrolleeDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tableContainerRef    = useRef<HTMLDivElement>(null)
 
@@ -393,6 +397,43 @@ export default function BatchDetailPage() {
       setError(e instanceof Error ? e.message : 'Re-open failed')
       toast.error(e instanceof Error ? e.message : 'Re-open failed')
     }
+  }
+
+  async function revetSelected() {
+    if (!batch || selectedGroups.size === 0) return
+    const groups = Array.from(selectedGroups).map(key => {
+      const [enrollee_id, encounter_date] = key.split('|||')
+      return { enrollee_id, encounter_date }
+    })
+    setRevetting(true)
+    setError('')
+    try {
+      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batchId}/revet-selected`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groups }),
+      })
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Re-vet failed') }
+      toast.success(`Re-vetting ${groups.length} group(s)…`)
+      setRevetMode(false)
+      setSelectedGroups(new Set())
+      await loadBatch()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Re-vet failed')
+      toast.error(e instanceof Error ? e.message : 'Re-vet failed')
+    } finally {
+      setRevetting(false)
+    }
+  }
+
+  function toggleGroupSelection(enrolleeId: string, encounterDate: string) {
+    const key = `${enrolleeId}|||${encounterDate}`
+    setSelectedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   async function fetchProcedures(q: string): Promise<ComboOption[]> {
@@ -663,6 +704,25 @@ export default function BatchDetailPage() {
             <Button variant="outline" onClick={reopenBatch}>
               Re-open for Editing
             </Button>
+          )}
+          {isVetted && !revetMode && (
+            <Button variant="secondary" onClick={() => setRevetMode(true)}>
+              Select to Re-vet
+            </Button>
+          )}
+          {isVetted && revetMode && (
+            <>
+              <Button variant="outline" onClick={() => { setRevetMode(false); setSelectedGroups(new Set()) }}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={revetSelected}
+                disabled={selectedGroups.size === 0 || revetting}
+              >
+                {revetting ? 'Submitting…' : `Re-vet Selected (${selectedGroups.size})`}
+              </Button>
+            </>
           )}
           {isOpen && dirty && (
             <Button variant="secondary" onClick={saveRows} disabled={saving}>
@@ -973,14 +1033,32 @@ export default function BatchDetailPage() {
             </div>
           )}
 
-          {batch.vetting_results.map((result, gi) => (
-            <div key={gi} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          {batch.vetting_results.map((result, gi) => {
+            const grpEncDate = result.encounter_date ?? ''
+            const grpSelected = revetMode && selectedGroups.has(`${result.enrollee_id ?? ''}|||${grpEncDate}`)
+            return (
+            <div key={gi} className={`bg-white rounded-xl border overflow-hidden ${grpSelected ? 'border-[#137fec] ring-2 ring-[#137fec]/20' : 'border-slate-200'}`}>
               {(() => {
                 const hdr = rowByEnrollee.get(result.enrollee_id ?? '')
                 const name = hdr ? `${hdr.first_name} ${hdr.last_name}`.trim() : ''
+                const encDate = result.encounter_date ?? hdr?.encounter_date_from ?? ''
+                const grpKey = `${result.enrollee_id ?? ''}|||${encDate}`
+                const isSelected = selectedGroups.has(grpKey)
                 return (
-                  <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50 flex-wrap gap-2">
+                  <div
+                    className={`flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-wrap gap-2 ${revetMode ? 'cursor-pointer select-none' : ''} ${isSelected ? 'bg-[#137fec]/5' : 'bg-slate-50'}`}
+                    onClick={revetMode ? () => toggleGroupSelection(result.enrollee_id ?? '', encDate) : undefined}
+                  >
                     <div className="flex items-center gap-2 flex-wrap">
+                      {revetMode && (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleGroupSelection(result.enrollee_id ?? '', encDate)}
+                          onClick={e => e.stopPropagation()}
+                          className="w-4 h-4 rounded border-slate-300 accent-[#137fec] cursor-pointer"
+                        />
+                      )}
                       {hdr?.pa_number && (
                         <span className="text-[10px] font-mono bg-slate-200 text-slate-600 rounded px-2 py-0.5">{hdr.pa_number}</span>
                       )}
@@ -1076,7 +1154,8 @@ export default function BatchDetailPage() {
                 </table>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
