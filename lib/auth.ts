@@ -10,6 +10,10 @@ export const ALL_MODULES = [
   'SLA Generator',
   'NHIA Vetting',
   'Health Screening',
+  'Pharmacy',
+  'Check-in Monitor',
+  'Aftercare',
+  'Escalations',
   'Admin',
 ] as const
 
@@ -37,6 +41,10 @@ export const MODULE_ROUTES: { href: string; label: string; module: string }[] = 
   { href: '/sla',                     label: 'SLA Generator',             module: 'SLA Generator' },
   { href: '/nhia-vetting',            label: 'NHIA Vetting',              module: 'NHIA Vetting' },
   { href: '/health-screening',        label: 'Health Screening',          module: 'Health Screening' },
+  { href: '/pharmacy',                label: 'Pharmacy',                  module: 'Pharmacy' },
+  { href: '/checkin',                 label: 'Check-in Monitor',          module: 'Check-in Monitor' },
+  { href: '/aftercare',               label: '24hr Aftercare',            module: 'Aftercare' },
+  { href: '/escalations',             label: 'Escalations',               module: 'Escalations' },
   { href: '/admin',                   label: 'Admin',                     module: 'Admin' },
 ]
 

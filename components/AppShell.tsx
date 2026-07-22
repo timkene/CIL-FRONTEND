@@ -25,6 +25,10 @@ const PATH_MODULE: Record<string, string> = {
   '/sla':                    'SLA Generator',
   '/nhia-vetting':           'NHIA Vetting',
   '/health-screening':       'Health Screening',
+  '/pharmacy':               'Pharmacy',
+  '/checkin':                'Check-in Monitor',
+  '/aftercare':              'Aftercare',
+  '/escalations':            'Escalations',
   '/admin':                  'Admin',
 }
 
