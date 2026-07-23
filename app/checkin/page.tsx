@@ -217,36 +217,40 @@ export default function CheckInPage() {
         )}
       </div>
 
-      {/* Check-ins table */}
+      {/* Check-ins table — only rows Klaire has messaged today */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900">Recent Check-ins</h2>
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">Messaged Today</h2>
+          {!loading && (
+            <span className="text-xs text-slate-400">{checkins.filter(c => c.messaged).length} sent</span>
+          )}
         </div>
 
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-400">Loading…</div>
-        ) : checkins.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-400">No check-in data yet.</div>
+        ) : checkins.filter(c => c.messaged).length === 0 ? (
+          <div className="p-8 text-center text-sm text-slate-400">No check-in messages sent today yet.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200">
-                  {['Enrollee ID', 'Name', 'Phone', 'Status', 'Response', 'Last Check-in'].map(h => (
+                  {['Enrollee ID', 'Name', 'Hospital', 'Check-in Time', 'Messaged At'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {checkins.map((ci, idx) => (
-                  <tr key={ci.enrollee_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                    <td className="px-4 py-3 font-mono text-sm text-slate-700">{ci.enrollee_id}</td>
-                    <td className="px-4 py-3 text-sm text-slate-900">{ci.name ?? '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{ci.phone ?? '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500 capitalize">{ci.status ?? '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500 max-w-xs truncate">{ci.response ?? '—'}</td>
+                {checkins.filter(c => c.messaged).map((ci, idx) => (
+                  <tr key={ci.confirmid} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                    <td className="px-4 py-3 font-mono text-sm text-slate-700">{ci.enrollee_id || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-900">{ci.firstname || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500">{ci.providername || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-400">
-                      {ci.last_checkin ? new Date(ci.last_checkin).toLocaleString() : '—'}
+                      {ci.dateadded ? new Date(ci.dateadded).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-400">
+                      {ci.sent_at ? new Date(ci.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
                     </td>
                   </tr>
                 ))}

@@ -104,12 +104,14 @@ export const getCheckIns = () =>
   klaireFetch<Record<string, unknown>>('/team/api/checkins')
 
 export interface CheckInSummary {
+  confirmid: string
   enrollee_id: string
-  name?: string
-  status?: string
-  phone?: string
-  last_checkin?: string
-  response?: string
+  firstname: string
+  providername: string
+  dateadded: string
+  minutes_elapsed: number
+  messaged: boolean
+  sent_at: string
 }
 
 // ── Sync ───────────────────────────────────────────────────────────────────────
