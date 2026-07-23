@@ -53,6 +53,9 @@ export const deletePharmacyOrder = (id: string) =>
 export const approvePharmacyOrder = (id: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/approve`, { method: 'POST' })
 
+export const closePharmacyBidding = (id: string) =>
+  pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/close-bidding`, { method: 'POST' })
+
 export const rejectPharmacyOrder = (id: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/reject`, { method: 'POST' })
 

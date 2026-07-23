@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { BiddingTable } from '@/components/pharmacy/BiddingTable'
 import { CountdownTimer } from '@/components/pharmacy/CountdownTimer'
 import { StatusChip } from '@/components/pharmacy/StatusChip'
-import { getPharmacyOrder, PharmacyApiError } from '@/lib/pharmacy-api'
+import { getPharmacyOrder, closePharmacyBidding, PharmacyApiError } from '@/lib/pharmacy-api'
 import type { PharmacyOrder, Bid, OrderStatus } from '@/lib/pharmacy-types'
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -36,6 +36,7 @@ export default function PharmacyOrderPage() {
   const [status, setStatus] = useState<OrderStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
+  const [closingBid, setClosingBid] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -233,16 +234,36 @@ export default function PharmacyOrderPage() {
 
       {/* STATE 1: Bidding Active */}
       {status === 'bidding' && (
-        <div className="bg-[#137fec] rounded-lg p-5 flex items-center justify-between">
+        <div className="bg-[#137fec] rounded-lg p-5 flex items-center justify-between gap-4">
           <div>
             <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">Bidding Window Active</p>
             <p className="text-white text-sm">
               {bids.length} aggregator{bids.length !== 1 ? 's' : ''} responding
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-white/60 text-[32px]">hourglass_top</span>
-            <CountdownTimer endsAt={order.biddingEndsAt} />
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-white/60 text-[32px]">hourglass_top</span>
+              <CountdownTimer endsAt={order.biddingEndsAt} />
+            </div>
+            <button
+              disabled={closingBid}
+              onClick={async () => {
+                if (!window.confirm(`Close bidding now? ${bids.length} bid${bids.length !== 1 ? 's' : ''} received. The cheapest will be selected.`)) return
+                setClosingBid(true)
+                try {
+                  await closePharmacyBidding(id)
+                  await load()
+                } catch (err) {
+                  setToast(err instanceof PharmacyApiError ? err.message : 'Failed to close bidding')
+                } finally {
+                  setClosingBid(false)
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              {closingBid ? 'Closing…' : 'Close Bidding'}
+            </button>
           </div>
         </div>
       )}
