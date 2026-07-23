@@ -4,7 +4,6 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { BiddingTable } from '@/components/pharmacy/BiddingTable'
 import { CountdownTimer } from '@/components/pharmacy/CountdownTimer'
-import { MedicationTag } from '@/components/pharmacy/MedicationTag'
 import { StatusChip } from '@/components/pharmacy/StatusChip'
 import { getPharmacyOrder, PharmacyApiError } from '@/lib/pharmacy-api'
 import type { PharmacyOrder, Bid, OrderStatus } from '@/lib/pharmacy-types'
@@ -93,32 +92,20 @@ export default function PharmacyOrderPage() {
       </nav>
 
       {/* Prescription summary card */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6">
-        <div className="flex items-start gap-4 mb-4">
+      <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-5">
+        <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-full bg-[#137fec]/10 flex items-center justify-center text-[#137fec] font-bold text-lg shrink-0">
             {order.enrollee.fullName.slice(0, 2).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-semibold text-slate-900">{order.enrollee.fullName}</h1>
-            <p className="text-sm text-slate-500">
-              {order.enrollee.enrolleeId && (
-                <span className="font-mono mr-2">{order.enrollee.enrolleeId}</span>
-              )}
-              {order.medications.map(m => m.diagnosis).filter(Boolean).join(' · ')}
-            </p>
-            {order.enrollee.phone && (
-              <p className="text-xs text-slate-500 mt-0.5">
-                Phone: <span className="font-semibold text-slate-900">{order.enrollee.phone}</span>
-              </p>
-            )}
-            {order.enrollee.address && (
-              <p className="text-xs text-slate-500 mt-0.5">
-                Address: <span className="font-semibold text-slate-900">{order.enrollee.address}</span>
-              </p>
+            {order.enrollee.enrolleeId && (
+              <p className="font-mono text-sm text-slate-500">{order.enrollee.enrolleeId}</p>
             )}
             {order.provider && (
               <p className="text-xs text-slate-500 mt-0.5">
                 Provider: <span className="font-semibold text-slate-900">{order.provider.providerName}</span>
+                {order.provider.providerId && <span className="font-mono ml-1 text-slate-400">({order.provider.providerId})</span>}
               </p>
             )}
           </div>
@@ -132,9 +119,76 @@ export default function PharmacyOrderPage() {
             label={STATUS_LABELS[status]}
           />
         </div>
-        <div className="flex flex-wrap gap-2">
-          {order.medications.map((med, i) => <MedicationTag key={i} med={med} />)}
-        </div>
+
+        {/* Enrollee details grid */}
+        {(() => {
+          const e = order.enrollee
+          const fields: [string, string | undefined | null][] = [
+            ['Phone', e.phone],
+            ['Address', e.address],
+            ['Title', e.title],
+            ['Gender', e.gender],
+            ['Date of Birth', e.dateOfBirth],
+            ['Plan Type', e.planType],
+            ['Group / Employer', e.groupName],
+            ['Email', e.email],
+            ['Effective Date', e.effectiveDate],
+            ['Termination Date', e.terminationDate],
+          ]
+          const visible = fields.filter(([, v]) => v)
+          if (visible.length === 0) return null
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {visible.map(([label, value]) => (
+                <div key={label}>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">{label}</p>
+                  <p className={`text-sm font-medium ${
+                    label === 'Termination Date' && e.isterminated
+                      ? 'text-rose-600'
+                      : 'text-slate-800'
+                  }`}>{value}</p>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
+
+        {/* Medications table */}
+        {order.medications.length > 0 && (
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Medications / Procedures</p>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    {['Diagnosis', 'Medication / Procedure', 'Dosage', 'Qty', 'Tabs', 'Frequency', 'Duration'].map(h => (
+                      <th key={h} className="px-3 py-2 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {order.medications.map((med, i) => (
+                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <td className="px-3 py-2 text-slate-700">
+                        {med.diagnosisCode && <span className="font-mono text-[#137fec] mr-1">{med.diagnosisCode}</span>}
+                        {med.diagnosis}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {med.procedureCode && <span className="font-mono text-emerald-700 mr-1">{med.procedureCode}</span>}
+                        {med.name}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">{med.dosage}</td>
+                      <td className="px-3 py-2 text-slate-600">{med.quantity}</td>
+                      <td className="px-3 py-2 text-slate-600">{med.tablets}</td>
+                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{med.frequency || '—'}</td>
+                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{med.durationDays ? `${med.durationDays}d` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* STATE 0a: Pending Review */}
