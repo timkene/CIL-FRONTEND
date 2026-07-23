@@ -59,6 +59,9 @@ export const closePharmacyBidding = (id: string) =>
 export const rejectPharmacyOrder = (id: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/reject`, { method: 'POST' })
 
+export const staffConfirmPharmacyReceipt = (id: string) =>
+  pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/staff-confirm`, { method: 'POST' })
+
 export const updatePharmacyOrder = (
   id: string,
   payload: { enrollee?: import('./pharmacy-types').Enrollee; provider?: import('./pharmacy-types').Provider; medications?: import('./pharmacy-types').Medication[] }

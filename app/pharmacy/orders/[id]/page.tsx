@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { BiddingTable } from '@/components/pharmacy/BiddingTable'
 import { CountdownTimer } from '@/components/pharmacy/CountdownTimer'
 import { StatusChip } from '@/components/pharmacy/StatusChip'
-import { getPharmacyOrder, closePharmacyBidding, PharmacyApiError } from '@/lib/pharmacy-api'
+import { getPharmacyOrder, closePharmacyBidding, staffConfirmPharmacyReceipt, PharmacyApiError } from '@/lib/pharmacy-api'
 import type { PharmacyOrder, Bid, OrderStatus } from '@/lib/pharmacy-types'
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -37,6 +37,7 @@ export default function PharmacyOrderPage() {
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
   const [closingBid, setClosingBid] = useState(false)
+  const [confirmingReceipt, setConfirmingReceipt] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -309,11 +310,34 @@ export default function PharmacyOrderPage() {
 
       {/* STATE 4: Awaiting confirmation */}
       {status === 'awaiting_confirmation' && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-5">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 space-y-3">
           <StatusChip status="pending" label="Awaiting Enrollee Confirmation" />
-          <p className="text-sm text-slate-500 mt-2">
+          <p className="text-sm text-slate-500">
             Klaire has asked the enrollee to confirm receipt. Waiting for their reply.
           </p>
+          <div className="pt-1 border-t border-amber-200">
+            <p className="text-xs text-slate-500 mb-2">
+              If the enrollee has confirmed via phone call or is unreachable, you can manually mark receipt here.
+            </p>
+            <button
+              disabled={confirmingReceipt}
+              onClick={async () => {
+                if (!window.confirm('Confirm that the enrollee has received their medication? This will close the order and move it to payment.')) return
+                setConfirmingReceipt(true)
+                try {
+                  await staffConfirmPharmacyReceipt(id)
+                  await load()
+                } catch (err) {
+                  setToast(err instanceof PharmacyApiError ? err.message : 'Failed to confirm receipt')
+                } finally {
+                  setConfirmingReceipt(false)
+                }
+              }}
+              className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              {confirmingReceipt ? 'Confirming…' : 'Manually Confirm Receipt'}
+            </button>
+          </div>
         </div>
       )}
 
