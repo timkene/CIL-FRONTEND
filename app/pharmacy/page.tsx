@@ -85,6 +85,7 @@ export default function PharmacyPage() {
     const stamp = o.completedAt ?? o.createdAt
     return new Date(stamp.endsWith('Z') ? stamp : stamp + 'Z').toDateString() === today
   }).length
+  const fulfilled = orders.filter(o => o.status === 'completed')
 
   const totalPages = Math.ceil(orders.length / PAGE_SIZE)
   const paged = orders.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
@@ -184,6 +185,41 @@ export default function PharmacyPage() {
             </tbody>
           </table>
         </div>
+
+        {!loading && fulfilled.length > 0 && (
+          <div className="mt-6 border-t border-slate-200">
+            <div className="px-6 py-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-900">Fulfilled Orders — Pending Payment</h2>
+              <span className="text-xs text-slate-400">{fulfilled.length} order{fulfilled.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-y border-slate-200">
+                    {['Intake ID', 'Enrollee', 'Aggregator', 'Amount (₦)', 'Date'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {fulfilled.map((o, idx) => (
+                    <tr key={o.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <td className="px-4 py-3 font-mono text-sm font-semibold text-slate-700">{o.intakeId}</td>
+                      <td className="px-4 py-3 text-sm text-slate-900">{o.enrollee.fullName}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{o.winnerName ?? '—'}</td>
+                      <td className="px-4 py-3 font-mono text-sm font-semibold text-emerald-700">
+                        {o.winnerTotalPrice != null ? o.winnerTotalPrice.toLocaleString() : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-400">
+                        {new Date(o.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-6 py-3 border-t border-slate-200">
