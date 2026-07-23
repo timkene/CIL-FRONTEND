@@ -14,6 +14,8 @@ import {
 interface IntakeFormProps {
   onSubmit: (data: { enrollee: Enrollee; provider: Provider; medications: Medication[] }) => void
   submitting: boolean
+  submitLabel?: string
+  initialData?: { enrollee: Enrollee; provider: Provider; medications: Medication[] }
 }
 
 const FREQUENCY_OPTIONS: MedicationFrequency[] = [
@@ -27,13 +29,13 @@ const EMPTY_MED: Medication = {
 
 const INPUT = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#137fec] focus:ring-2 focus:ring-[#137fec]/20'
 
-export function IntakeForm({ onSubmit, submitting }: IntakeFormProps) {
-  const [enrollee, setEnrollee] = useState<Enrollee>({ enrolleeId: '', fullName: '' })
-  const [provider, setProvider] = useState<Provider>({ providerId: '', providerName: '' })
-  const [medications, setMedications] = useState<Medication[]>([])
+export function IntakeForm({ onSubmit, submitting, submitLabel, initialData }: IntakeFormProps) {
+  const [enrollee, setEnrollee] = useState<Enrollee>(initialData?.enrollee ?? { enrolleeId: '', fullName: '' })
+  const [provider, setProvider] = useState<Provider>(initialData?.provider ?? { providerId: '', providerName: '' })
+  const [medications, setMedications] = useState<Medication[]>(initialData?.medications ?? [])
   const [medError, setMedError] = useState('')
   const [fetchingContact, setFetchingContact] = useState(false)
-  const [terminated, setTerminated] = useState(false)
+  const [terminated, setTerminated] = useState(initialData?.enrollee?.isterminated ?? false)
 
   const handleEnrolleeSelect = async (r: { code: string; label: string }) => {
     setEnrollee({ enrolleeId: r.code, fullName: r.label })
@@ -273,7 +275,7 @@ export function IntakeForm({ onSubmit, submitting }: IntakeFormProps) {
           className="flex items-center gap-2 bg-[#137fec] hover:bg-[#137fec]/90 text-white px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>send</span>
-          {submitting ? 'Submitting…' : 'Submit for Bidding'}
+          {submitting ? 'Saving…' : (submitLabel ?? 'Submit for Review')}
         </button>
       </div>
     </form>

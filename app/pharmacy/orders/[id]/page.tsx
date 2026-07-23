@@ -10,6 +10,8 @@ import { getPharmacyOrder, PharmacyApiError } from '@/lib/pharmacy-api'
 import type { PharmacyOrder, Bid, OrderStatus } from '@/lib/pharmacy-types'
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
+  pending_review: 'Pending Review',
+  rejected: 'Rejected',
   bidding: 'Bidding Active',
   awaiting_fulfillment: 'Awaiting Acceptance',
   accepted: 'Order Accepted',
@@ -51,11 +53,11 @@ export default function PharmacyOrderPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Poll every 10s while bidding is live; slow down to 30s for other active states
+  // Poll while non-terminal; 10s for bidding, 30s for other active, 60s for pending
   useEffect(() => {
     const isTerminal = status === 'completed' || status === 'not_received'
     if (isTerminal) return
-    const interval = status === 'bidding' ? 10_000 : 30_000
+    const interval = status === 'bidding' ? 10_000 : (status === 'pending_review' || status === 'rejected') ? 60_000 : 30_000
     const id = setInterval(load, interval)
     return () => clearInterval(id)
   }, [load, status])
@@ -123,7 +125,7 @@ export default function PharmacyOrderPage() {
           <StatusChip
             status={
               status === 'completed' ? 'active'
-              : status === 'not_received' ? 'error'
+              : status === 'not_received' || status === 'rejected' ? 'error'
               : status === 'bidding' ? 'info'
               : 'pending'
             }
@@ -134,6 +136,46 @@ export default function PharmacyOrderPage() {
           {order.medications.map((med, i) => <MedicationTag key={i} med={med} />)}
         </div>
       </div>
+
+      {/* STATE 0a: Pending Review */}
+      {status === 'pending_review' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-5">
+          <p className="text-amber-800 font-bold text-base mb-1">Awaiting Pharmacist Review</p>
+          <p className="text-sm text-slate-500">
+            This prescription is in the holding queue. An authorised staff member must approve it before it is sent to aggregators for bidding.
+          </p>
+          <div className="mt-3 flex gap-3">
+            <Link
+              href={`/pharmacy/intake/new?editId=${order.id}`}
+              className="text-sm text-[#137fec] hover:underline font-semibold"
+            >
+              Edit Prescription
+            </Link>
+            <Link href="/pharmacy" className="text-sm text-slate-500 hover:underline">
+              Back to Dashboard
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* STATE 0b: Rejected */}
+      {status === 'rejected' && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg p-5">
+          <p className="text-rose-700 font-bold text-base mb-1">Prescription Rejected</p>
+          <p className="text-sm text-slate-500">
+            The pharmacist has flagged an issue with this prescription. Edit and resubmit it for another review.
+          </p>
+          <div className="mt-3">
+            <Link
+              href={`/pharmacy/intake/new?editId=${order.id}`}
+              className="inline-flex items-center gap-1 bg-[#137fec] hover:bg-[#137fec]/90 text-white px-4 py-2 rounded-lg font-semibold text-sm transition-colors"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>edit</span>
+              Edit &amp; Resubmit
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* STATE 1: Bidding Active */}
       {status === 'bidding' && (

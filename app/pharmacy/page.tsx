@@ -2,12 +2,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { StatusChip } from '@/components/pharmacy/StatusChip'
-import { getPharmacyOrders, deletePharmacyOrder, PharmacyApiError } from '@/lib/pharmacy-api'
+import { getPharmacyOrders, deletePharmacyOrder, approvePharmacyOrder, rejectPharmacyOrder, PharmacyApiError } from '@/lib/pharmacy-api'
 import type { PharmacyOrder, OrderStatus } from '@/lib/pharmacy-types'
 
 const PAGE_SIZE = 20
 
 const STATUS_MAP: Record<OrderStatus, { status: 'active' | 'pending' | 'error' | 'info'; label: string }> = {
+  pending_review:        { status: 'pending', label: 'Pending Review' },
+  rejected:              { status: 'error',   label: 'Rejected' },
   bidding:               { status: 'info',    label: 'Bidding' },
   awaiting_fulfillment:  { status: 'pending', label: 'Awaiting Acceptance' },
   accepted:              { status: 'info',    label: 'Accepted' },
@@ -45,6 +47,7 @@ export default function PharmacyPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [actioning, setActioning] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -64,6 +67,33 @@ export default function PharmacyPage() {
     return () => clearInterval(id)
   }, [load])
 
+  const handleApprove = async (id: string) => {
+    setActioning(id)
+    try {
+      await approvePharmacyOrder(id)
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'bidding' as OrderStatus } : o))
+      setToast('Order approved — bidding session is now live.')
+    } catch (err) {
+      setToast(err instanceof PharmacyApiError ? err.message : 'Failed to approve order')
+    } finally {
+      setActioning(null)
+    }
+  }
+
+  const handleReject = async (id: string) => {
+    if (!window.confirm('Reject this prescription? The team will be able to edit and resubmit it.')) return
+    setActioning(id)
+    try {
+      await rejectPharmacyOrder(id)
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'rejected' as OrderStatus } : o))
+      setToast('Order rejected.')
+    } catch (err) {
+      setToast(err instanceof PharmacyApiError ? err.message : 'Failed to reject order')
+    } finally {
+      setActioning(null)
+    }
+  }
+
   const handleDelete = async (id: string, intakeId: string) => {
     if (!window.confirm(`Delete order ${intakeId}? This cannot be undone.`)) return
     setDeleting(id)
@@ -78,6 +108,7 @@ export default function PharmacyPage() {
   }
 
   const today = new Date().toDateString()
+  const pendingReview = orders.filter(o => o.status === 'pending_review' || o.status === 'rejected')
   const activeBidding = orders.filter(o => o.status === 'bidding').length
   const awaitingFulfillment = orders.filter(o => o.status === 'awaiting_fulfillment').length
   const completedToday = orders.filter(o => {
@@ -113,11 +144,76 @@ export default function PharmacyPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        <StatCard label="Pending Review"       value={loading ? '—' : pendingReview.length} />
         <StatCard label="Active Bidding"       value={loading ? '—' : activeBidding} />
         <StatCard label="Awaiting Fulfillment" value={loading ? '—' : awaitingFulfillment} />
         <StatCard label="Completed Today"      value={loading ? '—' : completedToday} />
       </div>
+
+      {/* Pending Review holding area */}
+      {!loading && pendingReview.length > 0 && (
+        <div className="bg-white border border-amber-200 rounded-lg overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-amber-200 bg-amber-50 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-amber-900">Awaiting Review</h2>
+              <p className="text-xs text-amber-700 mt-0.5">Approve to open bidding, reject to return to sender for editing</p>
+            </div>
+            <span className="text-xs text-amber-600">{pendingReview.length} order{pendingReview.length !== 1 ? 's' : ''}</span>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-200">
+                {['Intake ID', 'Enrollee', 'Medications', 'Status', 'Time', 'Actions'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pendingReview.map((order, idx) => {
+                const chip = STATUS_MAP[order.status]
+                const meds = order.medications ?? []
+                const busy = actioning === order.id
+                return (
+                  <tr key={order.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                    <td className="px-4 py-3 font-mono text-sm font-semibold text-slate-700">{order.intakeId}</td>
+                    <td className="px-4 py-3 text-sm text-slate-900">{order.enrollee.fullName}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500">{meds.length} item{meds.length !== 1 ? 's' : ''}</td>
+                    <td className="px-4 py-3"><StatusChip status={chip.status} label={chip.label} /></td>
+                    <td className="px-4 py-3 text-sm text-slate-400">
+                      {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link href={`/pharmacy/orders/${order.id}`} className="text-sm text-[#137fec] hover:underline font-semibold">View</Link>
+                        <Link href={`/pharmacy/intake/new?editId=${order.id}`} className="text-sm text-slate-600 hover:underline font-semibold">Edit</Link>
+                        {order.status === 'pending_review' && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(order.id)}
+                              disabled={busy}
+                              className="text-sm text-emerald-600 hover:underline font-semibold disabled:opacity-40"
+                            >
+                              {busy ? '…' : 'Approve'}
+                            </button>
+                            <button
+                              onClick={() => handleReject(order.id)}
+                              disabled={busy}
+                              className="text-sm text-rose-500 hover:underline font-semibold disabled:opacity-40"
+                            >
+                              {busy ? '…' : 'Reject'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">

@@ -50,6 +50,21 @@ export const createPharmacyOrder = (payload: {
 export const deletePharmacyOrder = (id: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}`, { method: 'DELETE' })
 
+export const approvePharmacyOrder = (id: string) =>
+  pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/approve`, { method: 'POST' })
+
+export const rejectPharmacyOrder = (id: string) =>
+  pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/reject`, { method: 'POST' })
+
+export const updatePharmacyOrder = (
+  id: string,
+  payload: { enrollee?: import('./pharmacy-types').Enrollee; provider?: import('./pharmacy-types').Provider; medications?: import('./pharmacy-types').Medication[] }
+) =>
+  pharmacyFetch<{ success: boolean }>(`/api/orders/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+
 const nhiaSearch = (path: string) => async (q: string): Promise<SearchResult[]> => {
   try {
     const res = await fetch(`https://clearline-nhia-api.onrender.com${path}?q=${encodeURIComponent(q)}`)
