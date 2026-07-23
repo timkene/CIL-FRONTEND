@@ -66,14 +66,35 @@ export const searchPharmacyProviders  = nhiaSearch('/api/search/providers')
 export const searchPharmacyProcedures = nhiaSearch('/api/search/procedures')
 export const searchPharmacyDiagnoses  = nhiaSearch('/api/search/diagnoses')
 
-export const getPharmacyMemberDetail = async (
-  enrolleeId: string
-): Promise<{ phone: string | null; address: string | null }> => {
+const NHIA_BASE = 'https://clearline-nhia-api.onrender.com'
+
+export interface MemberDetail {
+  phone: string | null
+  address: string | null
+  fullName: string | null
+  title: string | null
+  gender: string | null
+  dateOfBirth: string | null
+  planType: string | null
+  groupName: string | null
+  email: string | null
+  effectiveDate: string | null
+  terminationDate: string | null
+  isterminated: boolean
+}
+
+const EMPTY_DETAIL: MemberDetail = {
+  phone: null, address: null, fullName: null, title: null, gender: null,
+  dateOfBirth: null, planType: null, groupName: null, email: null,
+  effectiveDate: null, terminationDate: null, isterminated: false,
+}
+
+export const getPharmacyMemberDetail = async (enrolleeId: string): Promise<MemberDetail> => {
   try {
-    return await pharmacyFetch<{ phone: string | null; address: string | null }>(
-      `/api/members/${encodeURIComponent(enrolleeId)}`
-    )
+    const res = await fetch(`${NHIA_BASE}/api/members/${encodeURIComponent(enrolleeId)}`)
+    if (!res.ok) return EMPTY_DETAIL
+    return { ...EMPTY_DETAIL, ...(await res.json()) }
   } catch {
-    return { phone: null, address: null }
+    return EMPTY_DETAIL
   }
 }

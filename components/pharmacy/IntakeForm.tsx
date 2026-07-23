@@ -28,18 +28,38 @@ const EMPTY_MED: Medication = {
 const INPUT = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#137fec] focus:ring-2 focus:ring-[#137fec]/20'
 
 export function IntakeForm({ onSubmit, submitting }: IntakeFormProps) {
-  const [enrollee, setEnrollee] = useState<Enrollee>({ enrolleeId: '', fullName: '', phone: '', address: '' })
+  const [enrollee, setEnrollee] = useState<Enrollee>({ enrolleeId: '', fullName: '' })
   const [provider, setProvider] = useState<Provider>({ providerId: '', providerName: '' })
   const [medications, setMedications] = useState<Medication[]>([])
   const [medError, setMedError] = useState('')
   const [fetchingContact, setFetchingContact] = useState(false)
+  const [terminated, setTerminated] = useState(false)
 
   const handleEnrolleeSelect = async (r: { code: string; label: string }) => {
-    setEnrollee(prev => ({ ...prev, enrolleeId: r.code, fullName: r.label }))
+    setEnrollee({ enrolleeId: r.code, fullName: r.label })
+    setTerminated(false)
     setFetchingContact(true)
     try {
-      const detail = await getPharmacyMemberDetail(r.code)
-      setEnrollee(prev => ({ ...prev, phone: detail.phone ?? '', address: detail.address ?? '' }))
+      const d = await getPharmacyMemberDetail(r.code)
+      const isTerminated =
+        d.isterminated === true ||
+        (!!d.terminationDate && new Date(d.terminationDate) < new Date())
+      setTerminated(isTerminated)
+      setEnrollee({
+        enrolleeId: r.code,
+        fullName: d.fullName ?? r.label,
+        phone: d.phone ?? '',
+        address: d.address ?? '',
+        title: d.title ?? undefined,
+        gender: d.gender ?? undefined,
+        dateOfBirth: d.dateOfBirth ?? undefined,
+        planType: d.planType ?? undefined,
+        groupName: d.groupName ?? undefined,
+        email: d.email ?? undefined,
+        effectiveDate: d.effectiveDate ?? undefined,
+        terminationDate: d.terminationDate ?? undefined,
+        isterminated: isTerminated,
+      })
     } finally {
       setFetchingContact(false)
     }
@@ -53,6 +73,7 @@ export function IntakeForm({ onSubmit, submitting }: IntakeFormProps) {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (!enrollee.enrolleeId) { setMedError('Please select an enrollee.'); return }
+    if (terminated) { setMedError('This enrollee\'s coverage is terminated. Prescriptions cannot be generated.'); return }
     if (!provider.providerId) { setMedError('Please select a provider.'); return }
     const filledMeds = medications.filter(m => m.name.trim())
     if (filledMeds.length === 0) { setMedError('Add at least one medication / procedure.'); return }
@@ -92,31 +113,47 @@ export function IntakeForm({ onSubmit, submitting }: IntakeFormProps) {
             )}
           </div>
 
-          {enrollee.enrolleeId && (
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">
-                Phone Number
-                {fetchingContact && <span className="ml-2 text-xs text-slate-400 font-normal">fetching…</span>}
-              </label>
-              <input
-                className={INPUT}
-                placeholder="e.g. 08012345678"
-                value={enrollee.phone ?? ''}
-                onChange={e => setEnrollee(prev => ({ ...prev, phone: e.target.value }))}
-              />
+          {enrollee.enrolleeId && fetchingContact && (
+            <p className="text-xs text-slate-400 animate-pulse">Fetching member details…</p>
+          )}
+
+          {enrollee.enrolleeId && !fetchingContact && terminated && (
+            <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3">
+              <p className="text-sm font-semibold text-rose-700">Coverage Terminated</p>
+              <p className="text-xs text-rose-600 mt-0.5">
+                Termination date: {enrollee.terminationDate ?? 'unknown'}. Prescriptions cannot be generated for this enrollee.
+              </p>
             </div>
           )}
 
-          {enrollee.enrolleeId && (
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Address</label>
-              <input
-                className={INPUT}
-                placeholder="e.g. 12 Adeola Odeku Street, VI, Lagos"
-                value={enrollee.address ?? ''}
-                onChange={e => setEnrollee(prev => ({ ...prev, address: e.target.value }))}
-              />
-            </div>
+          {enrollee.enrolleeId && !fetchingContact && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ['Phone', enrollee.phone],
+                  ['Address', enrollee.address],
+                  ['Title', enrollee.title],
+                  ['Gender', enrollee.gender],
+                  ['Date of Birth', enrollee.dateOfBirth],
+                  ['Plan Type', enrollee.planType],
+                  ['Group / Employer', enrollee.groupName],
+                  ['Email', enrollee.email],
+                  ['Effective Date', enrollee.effectiveDate],
+                  ['Termination Date', enrollee.terminationDate],
+                ] as [string, string | undefined][]).map(([label, value]) => (
+                  <div key={label}>
+                    <p className="text-xs font-semibold text-slate-500 mb-0.5">{label}</p>
+                    <p className={`text-sm rounded-lg px-3 py-2 border ${
+                      label === 'Termination Date' && terminated
+                        ? 'bg-rose-50 border-rose-200 text-rose-700 font-semibold'
+                        : 'bg-slate-50 border-slate-200 text-slate-700'
+                    }`}>
+                      {value || '—'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
 
           <div>

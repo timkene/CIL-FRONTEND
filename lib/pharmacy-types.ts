@@ -3,6 +3,15 @@ export interface Enrollee {
   fullName: string
   phone?: string
   address?: string
+  title?: string
+  gender?: string
+  dateOfBirth?: string
+  planType?: string
+  groupName?: string
+  email?: string
+  effectiveDate?: string
+  terminationDate?: string
+  isterminated?: boolean
 }
 
 export interface Provider {
