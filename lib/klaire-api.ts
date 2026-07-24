@@ -112,7 +112,16 @@ export interface CheckInSummary {
   minutes_elapsed: number
   messaged: boolean
   sent_at: string
+  dealt_by: string | null
+  dealt_at: string
 }
+
+export const dealCheckIn = (confirmid: string, userName?: string) =>
+  klaireFetch<{ status: string; confirmid: string; dealt_by: string }>(
+    `/team/api/checkins/${encodeURIComponent(confirmid)}/deal`,
+    { method: 'POST' },
+    userName
+  )
 
 // ── Sync ───────────────────────────────────────────────────────────────────────
 export const getSyncStatus = () =>

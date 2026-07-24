@@ -8,6 +8,7 @@ import {
   getSyncStatus,
   runSync,
   getCheckIns,
+  dealCheckIn,
   KlaireApiError,
   type CheckInSummary,
 } from '@/lib/klaire-api'
@@ -81,6 +82,7 @@ export default function CheckInPage() {
   const [loading, setLoading] = useState(true)
   const [actingMonitor, setActingMonitor] = useState(false)
   const [actingSync, setActingSync] = useState(false)
+  const [dealing, setDealing] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -123,6 +125,20 @@ export default function CheckInPage() {
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to update monitor')
     } finally {
       setActingMonitor(false)
+    }
+  }
+
+  const handleDeal = async (confirmid: string) => {
+    setDealing(confirmid)
+    try {
+      const result = await dealCheckIn(confirmid, userName)
+      setCheckins(prev => prev.map(c =>
+        c.confirmid === confirmid ? { ...c, dealt_by: result.dealt_by, dealt_at: new Date().toISOString() } : c
+      ))
+    } catch (err) {
+      setToast(err instanceof KlaireApiError ? err.message : 'Failed to mark as dealt')
+    } finally {
+      setDealing(null)
     }
   }
 
@@ -235,7 +251,7 @@ export default function CheckInPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200">
-                  {['Enrollee ID', 'Name', 'Hospital', 'Check-in Time', 'Messaged At'].map(h => (
+                  {['Enrollee ID', 'Name', 'Hospital', 'Check-in Time', 'Messaged At', 'Dealt By', ''].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -251,6 +267,26 @@ export default function CheckInPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-400">
                       {ci.sent_at ? new Date(ci.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {ci.dealt_by ? (
+                        <span className="text-emerald-700 font-semibold">{ci.dealt_by}</span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {!ci.dealt_by ? (
+                        <button
+                          disabled={dealing === ci.confirmid}
+                          onClick={() => handleDeal(ci.confirmid)}
+                          className="text-xs font-semibold text-[#137fec] hover:underline disabled:opacity-40 whitespace-nowrap"
+                        >
+                          {dealing === ci.confirmid ? '…' : 'Pick Up'}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-300">Done</span>
+                      )}
                     </td>
                   </tr>
                 ))}
