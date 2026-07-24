@@ -107,6 +107,7 @@ export interface CheckInSummary {
   confirmid: string
   enrollee_id: string
   firstname: string
+  phone: string
   providername: string
   dateadded: string
   minutes_elapsed: number

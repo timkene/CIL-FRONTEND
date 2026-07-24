@@ -251,7 +251,7 @@ export default function CheckInPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200">
-                  {['Enrollee ID', 'Name', 'Hospital', 'Check-in Time', 'Messaged At', 'Dealt By', ''].map(h => (
+                  {['Enrollee ID', 'Name', 'Phone', 'Hospital', 'Check-in Time', 'Messaged At', 'Dealt By', ''].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -261,6 +261,11 @@ export default function CheckInPage() {
                   <tr key={ci.confirmid} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                     <td className="px-4 py-3 font-mono text-sm text-slate-700">{ci.enrollee_id || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-900">{ci.firstname || '—'}</td>
+                    <td className="px-4 py-3 text-sm font-mono text-slate-700">
+                      {ci.phone
+                        ? <a href={`tel:${ci.phone}`} className="hover:text-[#137fec] hover:underline">{ci.phone}</a>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-500">{ci.providername || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-400">
                       {ci.dateadded ? new Date(ci.dateadded).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
