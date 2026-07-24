@@ -14,6 +14,20 @@ import {
 } from '@/lib/klaire-api'
 import type { MonitorStatus, SyncStatus } from '@/lib/pharmacy-types'
 
+const NHIA_API = process.env.NEXT_PUBLIC_NHIA_API_URL ?? ''
+
+async function fetchClearlinePhone(enrolleeId: string): Promise<string> {
+  if (!enrolleeId || !NHIA_API) return ''
+  try {
+    const res = await fetch(`${NHIA_API}/api/members/${encodeURIComponent(enrolleeId)}`)
+    if (!res.ok) return ''
+    const data = await res.json()
+    return (data as { phone?: string }).phone ?? ''
+  } catch {
+    return ''
+  }
+}
+
 function ToggleCard({
   title,
   description,
@@ -79,6 +93,7 @@ export default function CheckInPage() {
   const [monitorStatus, setMonitorStatus] = useState<MonitorStatus | null>(null)
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
   const [checkins, setCheckins] = useState<CheckInSummary[]>([])
+  const [clearlinePhones, setClearlinePhones] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [actingMonitor, setActingMonitor] = useState(false)
   const [actingSync, setActingSync] = useState(false)
@@ -102,6 +117,20 @@ export default function CheckInPage() {
           ?? (ci.checkins as CheckInSummary[] | undefined)
           ?? []
       setCheckins(rows)
+
+      // Fetch Clearline-registered phones from NHIA API concurrently
+      const messagedRows = rows.filter((r) => r.messaged && r.enrollee_id)
+      const pairs = await Promise.allSettled(
+        messagedRows.map(async (r) => {
+          const ph = await fetchClearlinePhone(r.enrollee_id)
+          return [r.enrollee_id, ph] as [string, string]
+        })
+      )
+      const phoneMap: Record<string, string> = {}
+      for (const p of pairs) {
+        if (p.status === 'fulfilled' && p.value[1]) phoneMap[p.value[0]] = p.value[1]
+      }
+      setClearlinePhones(phoneMap)
     } catch (err) {
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to load check-in data')
     } finally {
@@ -251,7 +280,7 @@ export default function CheckInPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200">
-                  {['Enrollee ID', 'Name', 'Phone', 'Hospital', 'Check-in Time', 'Messaged At', 'Dealt By', ''].map(h => (
+                  {['Enrollee ID', 'Name', 'Contact Numbers', 'Hospital', 'Check-in Time', 'Messaged At', 'Dealt By', ''].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -261,10 +290,28 @@ export default function CheckInPage() {
                   <tr key={ci.confirmid} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                     <td className="px-4 py-3 font-mono text-sm text-slate-700">{ci.enrollee_id || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-900">{ci.firstname || '—'}</td>
-                    <td className="px-4 py-3 text-sm font-mono text-slate-700">
-                      {ci.phone
-                        ? <a href={`tel:${ci.phone}`} className="hover:text-[#137fec] hover:underline">{ci.phone}</a>
-                        : <span className="text-slate-300">—</span>}
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex flex-col gap-1">
+                        {ci.phone && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase w-16 shrink-0">WhatsApp</span>
+                            <a href={`tel:${ci.phone}`} className="font-mono text-slate-700 hover:text-[#137fec] hover:underline">{ci.phone}</a>
+                          </div>
+                        )}
+                        {(ci.extra_phones ?? []).map((p, i) => (
+                          <div key={i} className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase w-16 shrink-0">Alt {i + 1}</span>
+                            <a href={`tel:${p}`} className="font-mono text-slate-700 hover:text-[#137fec] hover:underline">{p}</a>
+                          </div>
+                        ))}
+                        {clearlinePhones[ci.enrollee_id] && clearlinePhones[ci.enrollee_id] !== ci.phone && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase w-16 shrink-0">On File</span>
+                            <a href={`tel:${clearlinePhones[ci.enrollee_id]}`} className="font-mono text-emerald-700 hover:underline">{clearlinePhones[ci.enrollee_id]}</a>
+                          </div>
+                        )}
+                        {!ci.phone && !clearlinePhones[ci.enrollee_id] && <span className="text-slate-300">—</span>}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-500">{ci.providername || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-400">
