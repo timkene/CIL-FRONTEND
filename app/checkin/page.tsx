@@ -292,25 +292,19 @@ export default function CheckInPage() {
                     <td className="px-4 py-3 text-sm text-slate-900">{ci.firstname || '—'}</td>
                     <td className="px-4 py-3 text-sm">
                       <div className="flex flex-col gap-1">
-                        {ci.phone && (
+                        {ci.whatsapp_phone && (
                           <div className="flex items-center gap-1.5">
                             <span className="text-[10px] font-bold text-slate-400 uppercase w-16 shrink-0">WhatsApp</span>
-                            <a href={`tel:${ci.phone}`} className="font-mono text-slate-700 hover:text-[#137fec] hover:underline">{ci.phone}</a>
+                            <a href={`tel:${ci.whatsapp_phone}`} className="font-mono text-slate-700 hover:text-[#137fec] hover:underline">{ci.whatsapp_phone}</a>
                           </div>
                         )}
-                        {(ci.extra_phones ?? []).map((p, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase w-16 shrink-0">Alt {i + 1}</span>
-                            <a href={`tel:${p}`} className="font-mono text-slate-700 hover:text-[#137fec] hover:underline">{p}</a>
-                          </div>
-                        ))}
-                        {clearlinePhones[ci.enrollee_id] && clearlinePhones[ci.enrollee_id] !== ci.phone && (
+                        {clearlinePhones[ci.enrollee_id] && (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-emerald-600 uppercase w-16 shrink-0">On File</span>
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase w-16 shrink-0">Registered</span>
                             <a href={`tel:${clearlinePhones[ci.enrollee_id]}`} className="font-mono text-emerald-700 hover:underline">{clearlinePhones[ci.enrollee_id]}</a>
                           </div>
                         )}
-                        {!ci.phone && !clearlinePhones[ci.enrollee_id] && <span className="text-slate-300">—</span>}
+                        {!ci.whatsapp_phone && !clearlinePhones[ci.enrollee_id] && <span className="text-slate-300">—</span>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-500">{ci.providername || '—'}</td>

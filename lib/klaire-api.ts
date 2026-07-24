@@ -107,8 +107,7 @@ export interface CheckInSummary {
   confirmid: string
   enrollee_id: string
   firstname: string
-  phone: string
-  extra_phones: string[]
+  whatsapp_phone: string
   providername: string
   dateadded: string
   minutes_elapsed: number
