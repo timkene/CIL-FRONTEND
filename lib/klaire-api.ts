@@ -118,8 +118,8 @@ export interface CheckInSummary {
 
 export const dealCheckIn = (confirmid: string, userName?: string) =>
   klaireFetch<{ status: string; confirmid: string; dealt_by: string }>(
-    `/team/api/checkins/${encodeURIComponent(confirmid)}/deal`,
-    { method: 'POST' },
+    `/team/api/checkins/deal`,
+    { method: 'POST', body: JSON.stringify({ confirmid }) },
     userName
   )
 

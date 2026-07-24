@@ -2,8 +2,10 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Sidebar from './Sidebar'
+import NotificationBell from './NotificationBell'
 import { getSession, clearSession, hasModuleAccess, MODULE_ROUTES, type User } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { registerPush } from '@/lib/push'
 
 // ── Auth context ──────────────────────────────────────────────────────────────
 interface AuthCtx { user: User | null; logout: () => void }
@@ -79,6 +81,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       setUser(session)
       setChecking(false)
+
+      registerPush(`${session.first_name} ${session.last_name}`.trim()).catch(() => {})
     }
 
     check()
@@ -117,6 +121,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen">
         <Sidebar />
         <main className="flex-1 md:ml-64 flex flex-col min-h-screen">
+          <div className="flex justify-end items-center px-4 py-2 border-b border-slate-100 bg-white sticky top-0 z-40">
+            <NotificationBell />
+          </div>
           {children}
         </main>
       </div>
