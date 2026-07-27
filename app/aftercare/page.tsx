@@ -6,9 +6,10 @@ import {
   startAftercare,
   stopAftercare,
   getAftercareFeedback,
+  getAftercareOutreach,
   KlaireApiError,
 } from '@/lib/klaire-api'
-import type { MonitorStatus, AftercareRecord, AftercareStats } from '@/lib/pharmacy-types'
+import type { MonitorStatus, AftercareRecord, AftercareStats, AftercareOutreachRecord } from '@/lib/pharmacy-types'
 
 const SENTIMENT_STYLES: Record<string, string> = {
   positive: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -22,6 +23,7 @@ export default function AftercarePage() {
 
   const [status, setStatus] = useState<MonitorStatus | null>(null)
   const [feedback, setFeedback] = useState<AftercareRecord[]>([])
+  const [outreach, setOutreach] = useState<AftercareOutreachRecord[]>([])
   const [stats, setStats] = useState<AftercareStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState(false)
@@ -29,13 +31,15 @@ export default function AftercarePage() {
 
   const load = useCallback(async () => {
     try {
-      const [statusResult, feedbackResult] = await Promise.all([
+      const [statusResult, feedbackResult, outreachResult] = await Promise.all([
         getAftercareStatus(),
         getAftercareFeedback(),
+        getAftercareOutreach(),
       ])
       setStatus(statusResult)
       setFeedback(feedbackResult.feedback)
       setStats(feedbackResult.stats)
+      setOutreach(outreachResult.outreach)
     } catch (err) {
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to load aftercare data')
     } finally {
@@ -136,6 +140,49 @@ export default function AftercarePage() {
           ))}
         </div>
       )}
+
+      {/* Sent log */}
+      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Messages Sent (48hrs)</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Enrollees Klaire has contacted for aftercare follow-up</p>
+          </div>
+          {!loading && (
+            <span className="text-xs text-slate-400">{outreach.length} sent</span>
+          )}
+        </div>
+        {loading ? (
+          <div className="p-8 text-center text-sm text-slate-400">Loading…</div>
+        ) : outreach.length === 0 ? (
+          <div className="p-8 text-center text-sm text-slate-400">No aftercare messages sent in the last 48 hours.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  {['Enrollee ID', 'Hospital', 'Visit Date', 'Phone', 'Sent At'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {outreach.map((row, idx) => (
+                  <tr key={`${row.pa_key}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                    <td className="px-4 py-3 font-mono text-sm text-slate-700">{row.enrollee_id}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">{row.providername || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500">{row.visit_date || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500">{row.phone || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-400">
+                      {row.contacted_at ? new Date(row.contacted_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Feedback table */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">

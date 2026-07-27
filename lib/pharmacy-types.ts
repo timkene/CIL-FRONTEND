@@ -84,6 +84,16 @@ export interface SearchResult {
   label: string
 }
 
+export interface AftercareOutreachRecord {
+  enrollee_id: string
+  pa_key: string
+  phone: string
+  providername: string
+  visit_date: string
+  status: string
+  contacted_at: string
+}
+
 export interface Escalation {
   id: string
   enrollee_name: string
