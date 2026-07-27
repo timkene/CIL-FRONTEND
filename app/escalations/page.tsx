@@ -203,7 +203,7 @@ export default function EscalationsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200">
-                  {['Enrollee', 'Hospital', 'Type', 'Level', 'Status', 'Claimed By', 'Created', 'Actions'].map(h => (
+                  {['Enrollee', 'Complaint', 'Hospital', 'Level', 'Status', 'Claimed By', 'Created', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -214,9 +214,20 @@ export default function EscalationsPage() {
                     <td className="px-4 py-3">
                       <p className="text-sm font-semibold text-slate-900">{esc.enrollee_name}</p>
                       <p className="text-xs text-slate-400 font-mono">{esc.enrollee_id}</p>
+                      {esc.type && esc.type !== 'general_complaint' && (
+                        <span className="inline-block mt-1 text-[10px] font-bold text-[#137fec] bg-[#137fec]/10 rounded px-1.5 py-0.5 uppercase tracking-wide">
+                          {esc.type.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 max-w-xs">
+                      {esc.complaint ? (
+                        <p className="text-sm text-slate-700 line-clamp-2">{esc.complaint}</p>
+                      ) : (
+                        <span className="text-slate-300 text-sm">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">{esc.hospital || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600 capitalize">{esc.type || '—'}</td>
                     <td className="px-4 py-3 text-sm font-semibold text-slate-700">L{esc.level}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${STATUS_STYLES[esc.status] ?? ''}`}>
