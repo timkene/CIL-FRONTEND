@@ -11,11 +11,6 @@ import {
 } from '@/lib/klaire-api'
 import type { MonitorStatus, AftercareRecord, AftercareStats, AftercareOutreachRecord } from '@/lib/pharmacy-types'
 
-const SENTIMENT_STYLES: Record<string, string> = {
-  positive: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  negative: 'bg-rose-50 text-rose-600 border-rose-200',
-  neutral:  'bg-slate-100 text-slate-500 border-slate-200',
-}
 
 export default function AftercarePage() {
   const { user } = useAuth()
@@ -126,16 +121,18 @@ export default function AftercarePage() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'Total Responses', value: stats.total },
-            { label: 'Positive', value: stats.positive, color: 'text-emerald-700' },
-            { label: 'Negative', value: stats.negative, color: 'text-rose-600' },
-            { label: 'Neutral', value: stats.neutral, color: 'text-slate-500' },
-          ].map(({ label, value, color }) => (
+            { label: 'Responses', value: stats.count, display: String(stats.count) },
+            { label: 'Avg CSAT', value: stats.avg_csat, display: stats.avg_csat != null ? `${stats.avg_csat}/5` : '—' },
+            { label: 'Avg Provider', value: stats.avg_provider_rating, display: stats.avg_provider_rating != null ? `${stats.avg_provider_rating}/5` : '—' },
+            { label: 'Avg Clearline', value: stats.avg_clearline_rating, display: stats.avg_clearline_rating != null ? `${stats.avg_clearline_rating}/5` : '—' },
+            { label: 'Avg NPS', value: stats.avg_nps, display: stats.avg_nps != null ? `${stats.avg_nps}/10` : '—' },
+            { label: 'Escalations', value: stats.escalation_count, display: String(stats.escalation_count), color: stats.escalation_count > 0 ? 'text-rose-600' : 'text-slate-900' },
+          ].map(({ label, display, color }) => (
             <div key={label} className="bg-white border border-slate-200 rounded-lg p-5">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
-              <p className={`text-3xl font-semibold ${color ?? 'text-slate-900'}`}>{value}</p>
+              <p className={`text-3xl font-semibold ${color ?? 'text-slate-900'}`}>{display}</p>
             </div>
           ))}
         </div>
@@ -145,7 +142,7 @@ export default function AftercarePage() {
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Messages Sent (48hrs)</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Messages Sent (24hrs)</h2>
             <p className="text-xs text-slate-400 mt-0.5">Enrollees Klaire has contacted for aftercare follow-up</p>
           </div>
           {!loading && (
@@ -155,7 +152,7 @@ export default function AftercarePage() {
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-400">Loading…</div>
         ) : outreach.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-400">No aftercare messages sent in the last 48 hours.</div>
+          <div className="p-8 text-center text-sm text-slate-400">No aftercare messages sent in the last 24 hours.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -199,27 +196,26 @@ export default function AftercarePage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200">
-                  {['PA Key', 'Enrollee ID', 'Sentiment', 'Feedback', 'Date'].map(h => (
+                  {['Enrollee ID', 'Hospital', 'CSAT', 'Provider', 'Clearline', 'NPS', 'Date'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {feedback.map((row, idx) => {
-                  const sentStyle = SENTIMENT_STYLES[row.sentiment] ?? SENTIMENT_STYLES.neutral
+                  const scoreCell = (v: number | null, max: number) =>
+                    v != null
+                      ? <span className={`font-semibold ${v <= (max === 5 ? 2 : 4) ? 'text-rose-600' : v >= (max === 5 ? 4 : 8) ? 'text-emerald-700' : 'text-slate-700'}`}>{v}/{max}</span>
+                      : <span className="text-slate-300">—</span>
                   return (
-                    <tr key={`${row.pa_key}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                      <td className="px-4 py-3 font-mono text-sm text-slate-700">{row.pa_key}</td>
-                      <td className="px-4 py-3 text-sm text-slate-700">{row.enrollee_id}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold capitalize ${sentStyle}`}>
-                          {row.sentiment}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-500 max-w-xs">
-                        <span className="line-clamp-2">{row.feedback_text}</span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-400">
+                    <tr key={`${row.enrollee_id}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <td className="px-4 py-3 font-mono text-sm text-slate-700">{row.enrollee_id || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600 max-w-[160px] truncate">{row.provider_name || '—'}</td>
+                      <td className="px-4 py-3 text-sm">{scoreCell(row.csat, 5)}</td>
+                      <td className="px-4 py-3 text-sm">{scoreCell(row.provider_rating, 5)}</td>
+                      <td className="px-4 py-3 text-sm">{scoreCell(row.clearline_rating, 5)}</td>
+                      <td className="px-4 py-3 text-sm">{scoreCell(row.nps, 10)}</td>
+                      <td className="px-4 py-3 text-sm text-slate-400 whitespace-nowrap">
                         {new Date(row.created_at).toLocaleDateString()}
                       </td>
                     </tr>

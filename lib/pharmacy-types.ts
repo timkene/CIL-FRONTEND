@@ -141,16 +141,21 @@ export interface SyncStatus {
 }
 
 export interface AftercareRecord {
-  pa_key: string
   enrollee_id: string
-  feedback_text: string
-  sentiment: string
+  provider_name: string
+  csat: number | null
+  provider_rating: number | null
+  clearline_rating: number | null
+  nps: number | null
+  escalated: boolean
   created_at: string
 }
 
 export interface AftercareStats {
-  total: number
-  positive: number
-  negative: number
-  neutral: number
+  count: number
+  avg_csat: number | null
+  avg_provider_rating: number | null
+  avg_clearline_rating: number | null
+  avg_nps: number | null
+  escalation_count: number
 }
