@@ -203,7 +203,7 @@ export default function EscalationsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200">
-                  {['Enrollee', 'Complaint', 'Hospital', 'Level', 'Status', 'Claimed By', 'Created', 'Actions'].map(h => (
+                  {['Enrollee', 'Phone', 'Complaint', 'Hospital', 'Level', 'Status', 'Claimed By', 'Created', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -218,6 +218,21 @@ export default function EscalationsPage() {
                         <span className="inline-block mt-1 text-[10px] font-bold text-[#137fec] bg-[#137fec]/10 rounded px-1.5 py-0.5 uppercase tracking-wide">
                           {esc.type.replace(/_/g, ' ')}
                         </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {esc.registered_phones?.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {esc.registered_phones.map((p: string) => (
+                            <a key={p} href={`tel:+${p}`} className="block text-xs font-mono text-[#137fec] hover:underline">
+                              +{p}
+                            </a>
+                          ))}
+                        </div>
+                      ) : esc.phone ? (
+                        <span className="text-xs font-mono text-slate-500">+{esc.phone}</span>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 max-w-xs">
