@@ -123,6 +123,32 @@ export interface EscalationStats {
   total: number
 }
 
+export interface AftercareTrackerRecord {
+  enrollee_id: string
+  phone: string
+  providername?: string
+  provider_name?: string
+  contacted_at: string
+  pa_key?: string
+  interaction: 'completed' | 'escalated' | 'pending'
+  feedback?: {
+    csat?: number
+    provider_rating?: number
+    clearline_rating?: number
+    nps?: number
+    escalated?: boolean
+    created_at?: string
+  } | null
+  escalation?: {
+    id: string
+    complaint?: string
+    type?: string
+    level?: number
+    status?: string
+    created_at?: string
+  } | null
+}
+
 export interface MonitorStatus {
   enabled: boolean
   updated_by?: string

@@ -6,6 +6,7 @@ import type {
   AftercareRecord,
   AftercareStats,
   AftercareOutreachRecord,
+  AftercareTrackerRecord,
 } from './pharmacy-types'
 
 const BASE = process.env.NEXT_PUBLIC_KLAIRE_API_URL ?? ''
@@ -75,6 +76,17 @@ export const getAftercareOutreach = (since?: string) => {
   return klaireFetch<{ outreach: AftercareOutreachRecord[] }>(
     `/team/api/aftercare-outreach${qs}`
   )
+}
+
+export const getAftercareTracker = (date?: string) => {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : ''
+  return klaireFetch<{
+    date: string
+    total: number
+    responded: number
+    pending: number
+    records: AftercareTrackerRecord[]
+  }>(`/team/api/aftercare/tracker${qs}`)
 }
 
 // ── Escalations ────────────────────────────────────────────────────────────────
