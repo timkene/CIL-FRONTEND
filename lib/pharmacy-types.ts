@@ -112,6 +112,8 @@ export interface Escalation {
   time_to_resolve_min?: number
   complaint?: string
   phone?: string
+  auto_outreach?: boolean
+  registered_phones?: string[]
 }
 
 export interface EscalationStats {

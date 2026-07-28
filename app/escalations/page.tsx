@@ -77,8 +77,9 @@ export default function EscalationsPage() {
 
   const load = useCallback(async () => {
     try {
+      const isAftercare = filter === 'aftercare'
       const [{ escalations: escs }, sts] = await Promise.all([
-        getEscalations(filter || undefined),
+        getEscalations(isAftercare ? undefined : filter || undefined, isAftercare ? true : undefined),
         getEscalationStats(),
       ])
       setEscalations(escs)
@@ -190,18 +191,26 @@ export default function EscalationsPage() {
       )}
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-2">
-        {['open', 'claimed', 'resolved', ''].map(f => (
+      <div className="flex items-center gap-2 flex-wrap">
+        {[
+          { key: 'open', label: 'Open' },
+          { key: 'claimed', label: 'Claimed' },
+          { key: 'resolved', label: 'Resolved' },
+          { key: '', label: 'All' },
+          { key: 'aftercare', label: '24hr Aftercare' },
+        ].map(({ key, label }) => (
           <button
-            key={f || 'all'}
-            onClick={() => setFilter(f)}
+            key={key || 'all'}
+            onClick={() => setFilter(key)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              filter === f
-                ? 'bg-[#137fec] text-white'
+              filter === key
+                ? key === 'aftercare'
+                  ? 'bg-violet-600 text-white'
+                  : 'bg-[#137fec] text-white'
                 : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
           >
-            {f === '' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+            {label}
           </button>
         ))}
       </div>
@@ -228,11 +237,18 @@ export default function EscalationsPage() {
                     <td className="px-4 py-3">
                       <p className="text-sm font-semibold text-slate-900">{esc.enrollee_name}</p>
                       <p className="text-xs text-slate-400 font-mono">{esc.enrollee_id}</p>
-                      {esc.type && esc.type !== 'general_complaint' && (
-                        <span className="inline-block mt-1 text-[10px] font-bold text-[#137fec] bg-[#137fec]/10 rounded px-1.5 py-0.5 uppercase tracking-wide">
-                          {esc.type.replace(/_/g, ' ')}
-                        </span>
-                      )}
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {esc.auto_outreach && (
+                          <span className="text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5 uppercase tracking-wide">
+                            24hr aftercare
+                          </span>
+                        )}
+                        {esc.type && esc.type !== 'general_complaint' && esc.type !== 'aftercare_complaint' && (
+                          <span className="text-[10px] font-bold text-[#137fec] bg-[#137fec]/10 rounded px-1.5 py-0.5 uppercase tracking-wide">
+                            {esc.type.replace(/_/g, ' ')}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       {esc.registered_phones?.length > 0 ? (

@@ -78,8 +78,11 @@ export const getAftercareOutreach = (since?: string) => {
 }
 
 // ── Escalations ────────────────────────────────────────────────────────────────
-export const getEscalations = (status?: string) => {
-  const qs = status ? `?status=${encodeURIComponent(status)}` : ''
+export const getEscalations = (status?: string, autoOutreach?: boolean) => {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (autoOutreach !== undefined) params.set('auto_outreach', String(autoOutreach))
+  const qs = params.toString() ? `?${params.toString()}` : ''
   return klaireFetch<{ escalations: Escalation[] }>(`/team/api/escalations${qs}`)
 }
 
