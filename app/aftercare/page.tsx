@@ -138,48 +138,45 @@ export default function AftercarePage() {
         </div>
       )}
 
-      {/* Sent log */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Messages Sent (24hrs)</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Enrollees Klaire has contacted for aftercare follow-up</p>
-          </div>
-          {!loading && (
-            <span className="text-xs text-slate-400">{outreach.length} sent</span>
-          )}
-        </div>
-        {loading ? (
-          <div className="p-8 text-center text-sm text-slate-400">Loading…</div>
-        ) : outreach.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-400">No aftercare messages sent in the last 24 hours.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  {['Enrollee ID', 'Hospital', 'Visit Date', 'Phone', 'Sent At'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {outreach.map((row, idx) => (
-                  <tr key={`${row.pa_key}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                    <td className="px-4 py-3 font-mono text-sm text-slate-700">{row.enrollee_id}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{row.providername || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{row.visit_date || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{row.phone || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-400">
-                      {row.contacted_at ? new Date(row.contacted_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'}
-                    </td>
-                  </tr>
+      {/* Sent log — daily summary */}
+      {(() => {
+        const byDay: Record<string, number> = {}
+        outreach.forEach(r => {
+          const day = r.contacted_at ? r.contacted_at.slice(0, 10) : 'unknown'
+          byDay[day] = (byDay[day] ?? 0) + 1
+        })
+        const days = Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0]))
+        const total = outreach.length
+        return (
+          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Messages Sent</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Daily count of aftercare surveys dispatched</p>
+              </div>
+              {!loading && <span className="text-xs text-slate-400">{total} total</span>}
+            </div>
+            {loading ? (
+              <div className="p-8 text-center text-sm text-slate-400">Loading…</div>
+            ) : days.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-400">No aftercare messages sent yet.</div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {days.map(([day, count]) => (
+                  <div key={day} className="px-6 py-3 flex items-center justify-between">
+                    <span className="text-sm text-slate-700 font-medium">
+                      {new Date(day + 'T12:00:00').toLocaleDateString([], { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                    </span>
+                    <span className="text-sm font-semibold text-[#137fec] bg-[#137fec]/10 px-3 py-0.5 rounded-full">
+                      {count} sent
+                    </span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        )
+      })()}
 
       {/* Feedback table */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
