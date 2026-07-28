@@ -96,17 +96,24 @@ export default function EscalationsPage() {
   }, [load])
 
   useEffect(() => {
-    const id = setInterval(load, 30_000)
+    const id = setInterval(load, 10_000)
     return () => clearInterval(id)
   }, [load])
 
   const handleClaim = async (id: string) => {
     setActing(id)
+    // Optimistic: move to claimed immediately
+    setEscalations(prev =>
+      filter === 'open'
+        ? prev.filter(e => e.id !== id)
+        : prev.map(e => e.id === id ? { ...e, status: 'claimed', claimed_by: userName ?? '' } : e)
+    )
     try {
       await claimEscalation(id, userName)
-      await load()
+      load() // background sync — don't await
     } catch (err) {
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to claim')
+      load() // revert by reloading
     } finally {
       setActing(null)
     }
@@ -114,11 +121,18 @@ export default function EscalationsPage() {
 
   const handleResolve = async (id: string) => {
     setActing(id)
+    // Optimistic: remove from open/claimed views immediately
+    setEscalations(prev =>
+      filter === '' || filter === 'resolved'
+        ? prev.map(e => e.id === id ? { ...e, status: 'resolved' } : e)
+        : prev.filter(e => e.id !== id)
+    )
     try {
       await resolveEscalation(id, userName)
-      await load()
+      load() // background sync — don't await
     } catch (err) {
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to resolve')
+      load() // revert by reloading
     } finally {
       setActing(null)
     }
