@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/components/AppShell'
 import {
   getEscalations,
@@ -74,20 +74,24 @@ export default function EscalationsPage() {
   const [acting, setActing] = useState<string | null>(null)
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const loadGenRef = useRef(0)
 
   const load = useCallback(async () => {
+    const gen = ++loadGenRef.current
     try {
       const isAftercare = filter === 'aftercare'
       const [{ escalations: escs }, sts] = await Promise.all([
         getEscalations(isAftercare ? undefined : filter || undefined, isAftercare ? true : undefined),
         getEscalationStats(),
       ])
+      if (gen !== loadGenRef.current) return
       setEscalations(escs)
       setStats(sts)
     } catch (err) {
+      if (gen !== loadGenRef.current) return
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to load escalations')
     } finally {
-      setLoading(false)
+      if (gen === loadGenRef.current) setLoading(false)
     }
   }, [filter])
 
@@ -111,10 +115,9 @@ export default function EscalationsPage() {
     )
     try {
       await claimEscalation(id, userName)
-      load() // background sync — don't await
     } catch (err) {
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to claim')
-      load() // revert by reloading
+      load()
     } finally {
       setActing(null)
     }
@@ -130,10 +133,9 @@ export default function EscalationsPage() {
     )
     try {
       await resolveEscalation(id, userName)
-      load() // background sync — don't await
     } catch (err) {
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to resolve')
-      load() // revert by reloading
+      load()
     } finally {
       setActing(null)
     }
