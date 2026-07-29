@@ -138,6 +138,8 @@ export interface AftercareTrackerRecord {
     nps?: number
     escalated?: boolean
     created_at?: string
+    comments?: string | null
+    source?: string
   } | null
   escalation?: {
     id: string
@@ -177,10 +179,13 @@ export interface AftercareRecord {
   nps: number | null
   escalated: boolean
   created_at: string
+  comments?: string | null
+  source?: string
 }
 
 export interface AftercareStats {
   count: number
+  form_count?: number
   avg_csat: number | null
   avg_provider_rating: number | null
   avg_clearline_rating: number | null

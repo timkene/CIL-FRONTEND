@@ -143,8 +143,19 @@ export default function AftercarePage() {
       {/* Survey stats */}
       {stats && (
         <div className="grid grid-cols-3 gap-4">
+          <div className="bg-white border border-slate-200 rounded-lg p-5">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Responses</p>
+            <p className="text-3xl font-semibold text-slate-900">{stats.count}</p>
+            {(stats.form_count ?? 0) > 0 && (
+              <p className="text-xs text-slate-400 mt-1">
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#137fec]" />
+                  {stats.form_count} via survey link
+                </span>
+              </p>
+            )}
+          </div>
           {[
-            { label: 'Responses',       display: String(stats.count) },
             { label: 'Avg CSAT',        display: stats.avg_csat != null ? `${stats.avg_csat}/5` : '—' },
             { label: 'Avg Provider',    display: stats.avg_provider_rating != null ? `${stats.avg_provider_rating}/5` : '—' },
             { label: 'Avg Clearline',   display: stats.avg_clearline_rating != null ? `${stats.avg_clearline_rating}/5` : '—' },
@@ -187,7 +198,7 @@ export default function AftercarePage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200">
-                  {['Enrollee', 'Hospital', 'Sent At', 'Status', 'Survey Scores', 'Complaint'].map(h => (
+                  {['Enrollee', 'Hospital', 'Sent At', 'Status', 'Survey Scores', 'Note', 'Complaint'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -216,12 +227,25 @@ export default function AftercarePage() {
                     </td>
                     <td className="px-4 py-3">
                       {row.feedback ? (
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-slate-400">CSAT</span>{scoreChip(row.feedback.csat, 5)}
-                          <span className="text-slate-300">·</span>
-                          <span className="text-slate-400">NPS</span>{scoreChip(row.feedback.nps, 10)}
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-400">CSAT</span>{scoreChip(row.feedback.csat, 5)}
+                            <span className="text-slate-300">·</span>
+                            <span className="text-slate-400">NPS</span>{scoreChip(row.feedback.nps, 10)}
+                          </div>
+                          {row.feedback.source === 'form' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-[#137fec] font-semibold">
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#137fec]" />
+                              via link
+                            </span>
+                          )}
                         </div>
                       ) : <span className="text-slate-300 text-xs">—</span>}
+                    </td>
+                    <td className="px-4 py-3 max-w-[200px]">
+                      {row.feedback?.comments
+                        ? <p className="text-xs text-slate-700 line-clamp-3">{row.feedback.comments}</p>
+                        : <span className="text-slate-300 text-xs">—</span>}
                     </td>
                     <td className="px-4 py-3 max-w-xs">
                       {row.escalation?.complaint
@@ -235,6 +259,41 @@ export default function AftercarePage() {
           </div>
         )}
       </div>
+
+      {/* Survey Notes — all written comments from enrollees */}
+      {(() => {
+        const withNotes = feedback.filter(r => r.comments)
+        if (withNotes.length === 0) return null
+        return (
+          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200">
+              <h2 className="text-lg font-semibold text-slate-900">Survey Notes</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Written comments from enrollees ({withNotes.length})</p>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {withNotes.map((r, i) => (
+                <div key={i} className="px-6 py-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-slate-800 leading-relaxed">{r.comments}</p>
+                      <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
+                        <span className="font-mono">{r.enrollee_id}</span>
+                        {r.provider_name && <><span className="text-slate-200">·</span><span>{r.provider_name}</span></>}
+                        {r.source === 'form' && (
+                          <span className="text-[#137fec] font-semibold">via survey link</span>
+                        )}
+                      </div>
+                    </div>
+                    <time className="text-xs text-slate-400 whitespace-nowrap shrink-0">
+                      {r.created_at ? new Date(r.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
+                    </time>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Messages sent — daily count */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
