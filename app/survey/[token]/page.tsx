@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import Image from 'next/image'
 
 const KLAIRE_URL = process.env.NEXT_PUBLIC_KLAIRE_API_URL || 'https://klaire-whatsapp.onrender.com'
@@ -99,8 +100,9 @@ function NpsRating({ value, onChange }: { value: number | null; onChange: (v: nu
   )
 }
 
-export default function SurveyPage({ params }: { params: { token: string } }) {
-  const { token } = params
+export default function SurveyPage() {
+  const params = useParams<{ token: string }>()
+  const token = params?.token as string
 
   const [ctx, setCtx] = useState<SurveyContext | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
