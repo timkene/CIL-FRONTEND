@@ -10,21 +10,20 @@ type SurveyContext = {
   first_name: string
   visit_date: string
   already_submitted: boolean
+  procedures: string[]
 }
 
 function StarRating({
-  label,
-  sublabel,
-  value,
-  onChange,
+  label, sublabel, value, onChange, disabled,
 }: {
   label: string
   sublabel: string
   value: number | null
   onChange: (v: number) => void
+  disabled?: boolean
 }) {
   const [hovered, setHovered] = useState<number | null>(null)
-  const display = hovered ?? value
+  const display = disabled ? null : (hovered ?? value)
 
   return (
     <div className="question-block">
@@ -35,21 +34,22 @@ function StarRating({
           <button
             key={n}
             type="button"
-            className={`star ${display !== null && n <= display ? 'active' : ''}`}
-            onMouseEnter={() => setHovered(n)}
-            onMouseLeave={() => setHovered(null)}
-            onClick={() => onChange(n)}
+            className={`star ${disabled ? 'star-off' : (display !== null && n <= display ? 'active' : '')}`}
+            onMouseEnter={() => { if (!disabled) setHovered(n) }}
+            onMouseLeave={() => { if (!disabled) setHovered(null) }}
+            onClick={() => { if (!disabled) onChange(n) }}
             aria-label={`${n} star${n > 1 ? 's' : ''}`}
           >
             ★
           </button>
         ))}
       </div>
-      {value !== null && (
+      {!disabled && value !== null && (
         <p className="rating-label">
           {value === 1 ? 'Poor' : value === 2 ? 'Fair' : value === 3 ? 'Good' : value === 4 ? 'Very Good' : 'Excellent'}
         </p>
       )}
+      {disabled && <p className="rating-label" style={{ color: '#94a3b8' }}>Not applicable</p>}
     </div>
   )
 }
@@ -113,6 +113,10 @@ export default function SurveyPage() {
   const [nps, setNps] = useState<number | null>(null)
   const [comments, setComments] = useState('')
 
+  const [wellness, setWellness] = useState<'better' | 'worse' | null>(null)
+  const [didNotVisit, setDidNotVisit] = useState(false)
+  const [confirmedProcedures, setConfirmedProcedures] = useState<Set<string>>(new Set())
+
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -128,11 +132,40 @@ export default function SurveyPage() {
       .then(data => {
         setCtx(data)
         if (data.already_submitted) setSubmitted(true)
+        // Default: all procedures confirmed (enrollee unchecks what they didn't receive)
+        if (data.procedures?.length) {
+          setConfirmedProcedures(new Set(data.procedures))
+        }
       })
       .catch(e => setLoadError(e.message))
   }, [token])
 
-  const canSubmit = csat !== null && providerRating !== null && clearlineRating !== null && nps !== null
+  const handleDidNotVisit = (checked: boolean) => {
+    setDidNotVisit(checked)
+    if (checked) setProviderRating(null)
+  }
+
+  const toggleProcedure = (proc: string) => {
+    setConfirmedProcedures(prev => {
+      const next = new Set(prev)
+      if (next.has(proc)) next.delete(proc)
+      else next.add(proc)
+      return next
+    })
+  }
+
+  const selectAllProcedures = () => {
+    if (ctx?.procedures) setConfirmedProcedures(new Set(ctx.procedures))
+  }
+
+  const procedures = ctx?.procedures ?? []
+
+  const canSubmit =
+    csat !== null &&
+    (providerRating !== null || didNotVisit) &&
+    clearlineRating !== null &&
+    nps !== null &&
+    wellness !== null
 
   const handleSubmit = async () => {
     if (!canSubmit) return
@@ -144,10 +177,13 @@ export default function SurveyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           csat,
-          provider_rating: providerRating,
+          provider_rating: didNotVisit ? null : providerRating,
           clearline_rating: clearlineRating,
           nps,
           comments: comments || null,
+          wellness,
+          did_not_visit: didNotVisit,
+          confirmed_procedures: procedures.length > 0 ? Array.from(confirmedProcedures) : null,
         }),
       })
       if (!r.ok) throw new Error('submit_failed')
@@ -178,6 +214,7 @@ export default function SurveyPage() {
         .star { font-size: 36px; background: none; border: none; cursor: pointer; color: #e5e7eb; transition: color .15s, transform .1s; line-height: 1; padding: 0; }
         .star.active { color: #f59e0b; }
         .star:hover { transform: scale(1.15); }
+        .star.star-off { color: #d1d5db; cursor: default; }
         .rating-label { font-size: 12px; color: #64748b; margin-top: 2px; font-style: italic; }
         .nps-row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
         .nps-btn { width: 40px; height: 40px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; transition: transform .1s, background-color .15s; }
@@ -198,9 +235,32 @@ export default function SurveyPage() {
         .expired-icon { font-size: 48px; margin-bottom: 16px; }
         .expired-card h2 { font-size: 20px; font-weight: 600; color: #1e293b; margin-bottom: 8px; }
         .expired-card p { color: #64748b; font-size: 14px; }
+        /* Wellness buttons */
+        .wellness-row { display: flex; gap: 10px; margin-top: 10px; }
+        .wellness-btn { flex: 1; padding: 14px 12px; border-radius: 10px; border: 2px solid #e2e8f0; background: #fff; cursor: pointer; font-size: 14px; font-weight: 600; color: #475569; transition: all .2s; text-align: center; }
+        .wellness-btn:hover { border-color: #cbd5e1; }
+        .wellness-better { border-color: #10b981; background: #ecfdf5; color: #065f46; }
+        .wellness-worse { border-color: #ef4444; background: #fef2f2; color: #991b1b; }
+        /* Did not visit */
+        .did-not-visit { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 12px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all .2s; user-select: none; }
+        .did-not-visit.checked { border-color: #ef4444; background: #fef2f2; }
+        .did-not-visit input[type="checkbox"] { width: 17px; height: 17px; cursor: pointer; accent-color: #ef4444; }
+        .did-not-visit span { font-size: 14px; font-weight: 500; color: #475569; }
+        .did-not-visit.checked span { color: #991b1b; }
+        /* Procedure list */
+        .proc-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+        .proc-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all .2s; user-select: none; }
+        .proc-item.checked { border-color: #0095d4; background: #f0f9ff; }
+        .proc-item input[type="checkbox"] { width: 17px; height: 17px; cursor: pointer; accent-color: #0095d4; flex-shrink: 0; }
+        .proc-item span { font-size: 13px; font-weight: 500; color: #334155; }
+        .proc-actions { display: flex; align-items: center; justify-content: flex-end; margin-top: 6px; }
+        .select-all-btn { padding: 5px 14px; border-radius: 7px; border: 1.5px solid #0095d4; background: #fff; color: #0095d4; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s; }
+        .select-all-btn:hover { background: #f0f9ff; }
+        .proc-notice { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #92400e; margin-top: 8px; line-height: 1.5; }
         @media (max-width: 400px) {
           .star { font-size: 30px; }
           .nps-btn { width: 32px; height: 32px; font-size: 12px; }
+          .wellness-btn { font-size: 13px; padding: 12px 8px; }
         }
       `}</style>
 
@@ -220,7 +280,7 @@ export default function SurveyPage() {
             <div className="expired-card">
               <div className="expired-icon">🔍</div>
               <h2>Survey not found</h2>
-              <p>This link doesn't match any survey. Please check the link sent to you on WhatsApp.</p>
+              <p>This link doesn&apos;t match any survey. Please check the link sent to you on WhatsApp.</p>
             </div>
           ) : loadError ? (
             <div className="expired-card">
@@ -239,7 +299,7 @@ export default function SurveyPage() {
               <p>
                 Your feedback has been received and will help us improve care for you and all Clearline members.
                 <br /><br />
-                If you have any questions or need help, just reply to Klaire on WhatsApp — she's always available.
+                If you have any questions or need help, just reply to Klaire on WhatsApp — she&apos;s always available.
               </p>
             </div>
           ) : (
@@ -249,6 +309,8 @@ export default function SurveyPage() {
                 <p>Hi {ctx.first_name}! Your honest feedback helps us serve you better. Takes about 2 minutes.</p>
               </div>
               <div className="card-body">
+
+                {/* Q1 — Overall care */}
                 <StarRating
                   label="Overall care experience"
                   sublabel={`How would you rate your overall experience at ${ctx.hospital}?`}
@@ -256,13 +318,32 @@ export default function SurveyPage() {
                   onChange={setCsat}
                 />
                 <div className="divider" />
-                <StarRating
-                  label={`${ctx.hospital} rating`}
-                  sublabel="How would you rate the care and attention from the hospital staff?"
-                  value={providerRating}
-                  onChange={setProviderRating}
-                />
+
+                {/* Q2 — Hospital rating + did-not-visit */}
+                <div>
+                  <StarRating
+                    label={`${ctx.hospital} staff rating`}
+                    sublabel="How would you rate the care and attention from the hospital staff?"
+                    value={providerRating}
+                    onChange={setProviderRating}
+                    disabled={didNotVisit}
+                  />
+                  <label
+                    className={`did-not-visit ${didNotVisit ? 'checked' : ''}`}
+                    onClick={() => handleDidNotVisit(!didNotVisit)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={didNotVisit}
+                      onChange={e => handleDidNotVisit(e.target.checked)}
+                      onClick={e => e.stopPropagation()}
+                    />
+                    <span>I did not visit {ctx.hospital}</span>
+                  </label>
+                </div>
                 <div className="divider" />
+
+                {/* Q3 — Clearline HMO */}
                 <StarRating
                   label="Clearline HMO service"
                   sublabel="How would you rate Clearline HMO's overall service as your health insurance provider?"
@@ -270,8 +351,84 @@ export default function SurveyPage() {
                   onChange={setClearlineRating}
                 />
                 <div className="divider" />
+
+                {/* Q4 — NPS */}
                 <NpsRating value={nps} onChange={setNps} />
                 <div className="divider" />
+
+                {/* Q5 — Wellness */}
+                <div className="question-block">
+                  <p className="question-label">How are you feeling since your visit?</p>
+                  <p className="question-sublabel">Let us know how your recovery is going.</p>
+                  <div className="wellness-row">
+                    <button
+                      type="button"
+                      className={`wellness-btn ${wellness === 'better' ? 'wellness-better' : ''}`}
+                      onClick={() => setWellness('better')}
+                    >
+                      😊 Feeling better
+                    </button>
+                    <button
+                      type="button"
+                      className={`wellness-btn ${wellness === 'worse' ? 'wellness-worse' : ''}`}
+                      onClick={() => setWellness('worse')}
+                    >
+                      😔 Feeling worse
+                    </button>
+                  </div>
+                  {wellness === 'worse' && (
+                    <p style={{ fontSize: 13, color: '#dc2626', marginTop: 6 }}>
+                      We&apos;re sorry to hear that. Our team will call you shortly to check on you.
+                    </p>
+                  )}
+                </div>
+
+                {/* Q6 — Procedure confirmation (only if procedures exist) */}
+                {procedures.length > 0 && (
+                  <>
+                    <div className="divider" />
+                    <div className="question-block">
+                      <p className="question-label">Confirm your procedures</p>
+                      <p className="question-sublabel">
+                        Below are the procedures listed for your visit. Please check all that you actually received.
+                      </p>
+                      <div className="proc-list">
+                        {procedures.map(proc => {
+                          const checked = confirmedProcedures.has(proc)
+                          return (
+                            <label
+                              key={proc}
+                              className={`proc-item ${checked ? 'checked' : ''}`}
+                              onClick={() => toggleProcedure(proc)}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleProcedure(proc)}
+                                onClick={e => e.stopPropagation()}
+                              />
+                              <span>{proc}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                      {confirmedProcedures.size < procedures.length && (
+                        <div className="proc-actions">
+                          <button type="button" className="select-all-btn" onClick={selectAllProcedures}>
+                            Select all
+                          </button>
+                        </div>
+                      )}
+                      <div className="proc-notice">
+                        ⚠️ Any procedure not confirmed will be investigated on your behalf.
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="divider" />
+
+                {/* Comments */}
                 <div className="question-block">
                   <p className="question-label">Any additional comments? <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional)</span></p>
                   <textarea
@@ -282,6 +439,7 @@ export default function SurveyPage() {
                     onChange={e => setComments(e.target.value)}
                   />
                 </div>
+
                 {submitError && <p className="error-msg">{submitError}</p>}
                 <button
                   className="submit-btn"

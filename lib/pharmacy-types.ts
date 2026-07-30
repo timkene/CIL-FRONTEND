@@ -186,6 +186,8 @@ export interface AftercareRecord {
 export interface AftercareStats {
   count: number
   form_count?: number
+  feeling_worse_count?: number
+  false_visit_count?: number
   avg_csat: number | null
   avg_provider_rating: number | null
   avg_clearline_rating: number | null

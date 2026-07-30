@@ -12,7 +12,7 @@ interface AuthCtx { user: User | null; logout: () => void }
 const AuthContext = createContext<AuthCtx>({ user: null, logout: () => {} })
 export const useAuth = () => useContext(AuthContext)
 
-const PUBLIC_PATHS = ['/login']
+const PUBLIC_PATHS = ['/login', '/survey']
 
 // Map exact path prefixes to module names
 const PATH_MODULE: Record<string, string> = {
