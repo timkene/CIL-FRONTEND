@@ -8,6 +8,7 @@ import {
   getAftercareFeedback,
   getAftercareOutreach,
   getAftercareTracker,
+  getAftercareProviderRatings,
   KlaireApiError,
 } from '@/lib/klaire-api'
 import type {
@@ -42,11 +43,12 @@ export default function AftercarePage() {
   const { user } = useAuth()
   const userName = user ? `${user.first_name} ${user.last_name}` : undefined
 
-  const [status, setStatus]       = useState<MonitorStatus | null>(null)
-  const [stats, setStats]         = useState<AftercareStats | null>(null)
-  const [tracker, setTracker]     = useState<{ total: number; responded: number; pending: number; records: AftercareTrackerRecord[] } | null>(null)
-  const [outreach, setOutreach]   = useState<AftercareOutreachRecord[]>([])
-  const [feedback, setFeedback]   = useState<AftercareRecord[]>([])
+  const [status, setStatus]           = useState<MonitorStatus | null>(null)
+  const [stats, setStats]             = useState<AftercareStats | null>(null)
+  const [tracker, setTracker]         = useState<{ total: number; responded: number; pending: number; records: AftercareTrackerRecord[] } | null>(null)
+  const [outreach, setOutreach]       = useState<AftercareOutreachRecord[]>([])
+  const [feedback, setFeedback]       = useState<AftercareRecord[]>([])
+  const [providerRatings, setProviderRatings] = useState<{ hospital: string; avg_rating: number | null; count: number }[]>([])
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10))
   const [loading, setLoading]     = useState(true)
   const [acting, setActing]       = useState(false)
@@ -54,17 +56,19 @@ export default function AftercarePage() {
 
   const load = useCallback(async () => {
     try {
-      const [statusResult, trackerResult, feedbackResult, outreachResult] = await Promise.all([
+      const [statusResult, trackerResult, feedbackResult, outreachResult, ratingsResult] = await Promise.all([
         getAftercareStatus(),
         getAftercareTracker(selectedDate),
         getAftercareFeedback(),
         getAftercareOutreach(),
+        getAftercareProviderRatings(),
       ])
       setStatus(statusResult)
       setTracker(trackerResult)
       setFeedback(feedbackResult.feedback)
       setStats(feedbackResult.stats)
       setOutreach(outreachResult.outreach)
+      setProviderRatings(ratingsResult.ratings)
     } catch (err) {
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to load aftercare data')
     } finally {
@@ -157,7 +161,6 @@ export default function AftercarePage() {
           </div>
           {[
             { label: 'Avg CSAT',        display: stats.avg_csat != null ? `${stats.avg_csat}/5` : '—' },
-            { label: 'Avg Provider',    display: stats.avg_provider_rating != null ? `${stats.avg_provider_rating}/5` : '—' },
             { label: 'Avg Clearline',   display: stats.avg_clearline_rating != null ? `${stats.avg_clearline_rating}/5` : '—' },
             { label: 'Avg NPS',         display: stats.avg_nps != null ? `${stats.avg_nps}/10` : '—' },
             { label: 'Escalations',     display: String(stats.escalation_count), color: stats.escalation_count > 0 ? 'text-rose-600' : 'text-slate-900' },
@@ -169,6 +172,41 @@ export default function AftercarePage() {
               <p className={`text-3xl font-semibold ${color ?? 'text-slate-900'}`}>{display}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Provider ratings breakdown */}
+      {providerRatings.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200">
+            <h2 className="text-lg font-semibold text-slate-900">Provider Ratings</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Average hospital rating per facility (all time)</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {providerRatings.map((r) => {
+              const pct = r.avg_rating != null ? (r.avg_rating / 5) * 100 : 0
+              const barColor = r.avg_rating == null ? 'bg-slate-200'
+                : r.avg_rating >= 4 ? 'bg-emerald-400'
+                : r.avg_rating >= 3 ? 'bg-amber-400'
+                : 'bg-rose-400'
+              const textColor = r.avg_rating == null ? 'text-slate-400'
+                : r.avg_rating >= 4 ? 'text-emerald-700'
+                : r.avg_rating >= 3 ? 'text-amber-700'
+                : 'text-rose-600'
+              return (
+                <div key={r.hospital} className="px-6 py-3 flex items-center gap-4">
+                  <p className="text-sm text-slate-700 w-56 shrink-0 truncate" title={r.hospital}>{r.hospital}</p>
+                  <div className="flex-1 bg-slate-100 rounded-full h-2">
+                    <div className={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className={`text-sm font-semibold w-12 text-right shrink-0 ${textColor}`}>
+                    {r.avg_rating != null ? `${r.avg_rating}/5` : '—'}
+                  </span>
+                  <span className="text-xs text-slate-400 w-16 text-right shrink-0">{r.count} rating{r.count !== 1 ? 's' : ''}</span>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 

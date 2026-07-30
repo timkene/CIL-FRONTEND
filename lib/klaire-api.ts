@@ -89,6 +89,16 @@ export const getAftercareTracker = (date?: string) => {
   }>(`/team/api/aftercare/tracker${qs}`)
 }
 
+export const getAftercareProviderRatings = (since?: string, until?: string) => {
+  const params = new URLSearchParams()
+  if (since) params.set('since', since)
+  if (until) params.set('until', until)
+  const qs = params.toString()
+  return klaireFetch<{ ratings: { hospital: string; avg_rating: number | null; count: number }[] }>(
+    `/team/api/aftercare/provider-ratings${qs ? `?${qs}` : ''}`
+  )
+}
+
 // ── Escalations ────────────────────────────────────────────────────────────────
 export const getEscalations = (status?: string, autoOutreach?: boolean) => {
   const params = new URLSearchParams()
