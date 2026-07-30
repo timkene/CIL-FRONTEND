@@ -193,4 +193,8 @@ export interface AftercareStats {
   avg_clearline_rating: number | null
   avg_nps: number | null
   escalation_count: number
+  csat_count?: number
+  provider_rating_count?: number
+  clearline_rating_count?: number
+  nps_count?: number
 }

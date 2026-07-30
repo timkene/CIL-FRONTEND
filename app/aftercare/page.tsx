@@ -160,16 +160,19 @@ export default function AftercarePage() {
             )}
           </div>
           {[
-            { label: 'Avg CSAT',        display: stats.avg_csat != null ? `${stats.avg_csat}/5` : '—' },
-            { label: 'Avg Clearline',   display: stats.avg_clearline_rating != null ? `${stats.avg_clearline_rating}/5` : '—' },
-            { label: 'Avg NPS',         display: stats.avg_nps != null ? `${stats.avg_nps}/10` : '—' },
-            { label: 'Escalations',     display: String(stats.escalation_count), color: stats.escalation_count > 0 ? 'text-rose-600' : 'text-slate-900' },
-            { label: 'Feeling Worse',   display: String(stats.feeling_worse_count ?? 0), color: (stats.feeling_worse_count ?? 0) > 0 ? 'text-rose-600' : 'text-slate-900' },
-            { label: 'False Visits',    display: String(stats.false_visit_count ?? 0), color: (stats.false_visit_count ?? 0) > 0 ? 'text-amber-600' : 'text-slate-900' },
-          ].map(({ label, display, color }) => (
+            { label: 'Avg CSAT',      display: stats.avg_csat != null ? `${stats.avg_csat}/5` : '—',  ratedCount: stats.csat_count },
+            { label: 'Avg Clearline', display: stats.avg_clearline_rating != null ? `${stats.avg_clearline_rating}/5` : '—', ratedCount: stats.clearline_rating_count },
+            { label: 'Avg NPS',       display: stats.avg_nps != null ? `${stats.avg_nps}/10` : '—',   ratedCount: stats.nps_count },
+            { label: 'Escalations',   display: String(stats.escalation_count), color: stats.escalation_count > 0 ? 'text-rose-600' : 'text-slate-900' },
+            { label: 'Feeling Worse', display: String(stats.feeling_worse_count ?? 0), color: (stats.feeling_worse_count ?? 0) > 0 ? 'text-rose-600' : 'text-slate-900' },
+            { label: 'False Visits',  display: String(stats.false_visit_count ?? 0), color: (stats.false_visit_count ?? 0) > 0 ? 'text-amber-600' : 'text-slate-900' },
+          ].map(({ label, display, color, ratedCount }) => (
             <div key={label} className="bg-white border border-slate-200 rounded-lg p-5">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
               <p className={`text-3xl font-semibold ${color ?? 'text-slate-900'}`}>{display}</p>
+              {ratedCount != null && ratedCount > 0 && (
+                <p className="text-xs text-slate-400 mt-1">{ratedCount} rated</p>
+              )}
             </div>
           ))}
         </div>
