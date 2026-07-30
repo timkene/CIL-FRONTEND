@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, MLRSummary } from '@/lib/supabase'
 import DebitBinChart from '@/components/claims/DebitBinChart'
+import { Card, useToast } from '@/components/ui'
 
 const DEBIT_BINS = [
   { label: '₦0 – ₦5M',       min: 0,           max: 5_000_000 },
@@ -29,6 +30,7 @@ export default function PremiumAnalysisPage() {
   const [data, setData]       = useState<MLRSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     async function load() {
@@ -37,7 +39,13 @@ export default function PremiumAnalysisPage() {
         .select('*')
         .eq('had_error', false)
         .gt('total_debit_amount', 0)
-      if (err) { setError(err.message); setLoading(false); return }
+      if (err) {
+        const errorMsg = err.message
+        setError(errorMsg)
+        toast.error(errorMsg)
+        setLoading(false)
+        return
+      }
       setData(rows ?? [])
       setLoading(false)
     }
@@ -125,7 +133,7 @@ export default function PremiumAnalysisPage() {
         {/* Summary cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {summaryCards.map(c => (
-            <div key={c.label} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+            <Card key={c.label} padding="lg" className="flex flex-col justify-between shadow-sm">
               <div className="flex justify-between items-start">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider leading-tight">{c.label}</p>
                 <span className={`material-symbols-outlined ${c.iconColor} ${c.iconBg} p-1.5 rounded-lg text-xl`}>
@@ -136,7 +144,7 @@ export default function PremiumAnalysisPage() {
                 <h3 className={`text-3xl font-extrabold ${(c as { valueColor?: string }).valueColor ?? ''}`}>{c.value}</h3>
               </div>
               <p className="text-xs text-slate-400 mt-2">{c.sub}</p>
-            </div>
+            </Card>
           ))}
         </div>
 

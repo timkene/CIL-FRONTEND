@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/components/AppShell'
 import { isAdmin } from '@/lib/auth'
+import { Button, Badge, Card } from '@/components/ui'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface MappingFlag {
@@ -100,18 +101,11 @@ async function fetchAll<T>(table: string, order: { column: string; ascending: bo
 // ── UI atoms ──────────────────────────────────────────────────────────────────
 function BandBadge({ band }: { band: string | null }) {
   if (!band) return <span className="text-slate-400 text-xs">—</span>
-  const colors: Record<string, string> = {
-    A: 'bg-rose-100 text-rose-700 border-rose-200',
-    B: 'bg-amber-100 text-amber-700 border-amber-200',
-    C: 'bg-sky-100 text-sky-700 border-sky-200',
-    D: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  }
   const key = band.trim().toUpperCase().replace(/^BAND\s?/, '')
-  return (
-    <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full border ${colors[key] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-      Band {key}
-    </span>
-  )
+  const variantMap: Record<string, 'danger' | 'warning' | 'info' | 'success' | 'default'> = {
+    A: 'danger', B: 'warning', C: 'info', D: 'success'
+  }
+  return <Badge variant={variantMap[key] ?? 'default'}>Band {key}</Badge>
 }
 
 function AllowedBands({ bands }: { bands: string | null }) {
@@ -127,18 +121,10 @@ function DaysToExpiry({ contractEndDate }: { contractEndDate: string | null }) {
   if (!contractEndDate) return <span className="text-slate-400 text-xs">—</span>
   const days = Math.ceil((new Date(contractEndDate).getTime() - Date.now()) / 86_400_000)
   if (days < 0) {
-    return <span className="inline-block text-xs font-bold px-2 py-0.5 rounded-full border bg-slate-100 text-slate-500 border-slate-200">Expired</span>
+    return <Badge variant="default">Expired</Badge>
   }
-  const color = days <= 30
-    ? 'bg-rose-100 text-rose-700 border-rose-200'
-    : days <= 90
-    ? 'bg-amber-100 text-amber-700 border-amber-200'
-    : 'bg-emerald-100 text-emerald-700 border-emerald-200'
-  return (
-    <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full border ${color}`}>
-      {days}d
-    </span>
-  )
+  const variant = days <= 30 ? 'danger' : days <= 90 ? 'warning' : 'success'
+  return <Badge variant={variant}>{days}d</Badge>
 }
 
 // ── Provider accordion for Mapping Pool ───────────────────────────────────────
@@ -180,9 +166,9 @@ function MappingProviderCard({
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0 ml-4">
-            <span className="text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+            <Badge variant="danger">
               {group.enrollees.length} enrollee{group.enrollees.length !== 1 ? 's' : ''}
-            </span>
+            </Badge>
             <span className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
           </div>
         </button>
@@ -264,9 +250,9 @@ function VisitProviderCard({
             <span className="text-xs text-slate-400">{group.totalVisits} total visit{group.totalVisits !== 1 ? 's' : ''} across these enrollees</span>
           </div>
           <div className="flex items-center gap-3 shrink-0 ml-4">
-            <span className="text-sm font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full whitespace-nowrap">
+            <Badge variant="warning">
               {group.enrollees.length} enrollee{group.enrollees.length !== 1 ? 's' : ''}
-            </span>
+            </Badge>
             <span className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
           </div>
         </button>
@@ -497,18 +483,18 @@ export default function ProviderBandMappingPage() {
       {/* Tab nav */}
       <div className="flex gap-1 border-b border-slate-200">
         {TABS.map(t => (
-          <button
+          <Button
             key={t.id}
+            variant={tab === t.id ? 'primary' : 'ghost'}
+            size="sm"
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px flex items-center gap-2
-              ${tab === t.id ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            className={`border-b-2 rounded-none -mb-px ${tab === t.id ? 'border-indigo-500' : 'border-transparent'}`}
           >
             {t.label}
-            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full
-              ${tab === t.id ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
+            <Badge variant={tab === t.id ? 'info' : 'default'} className="ml-2">
               {t.count}
-            </span>
-          </button>
+            </Badge>
+          </Button>
         ))}
       </div>
 
@@ -527,12 +513,13 @@ export default function ProviderBandMappingPage() {
               value={mMaxPrice} onChange={e => setMMaxPrice(e.target.value)}
               className="w-36 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             {adminUser && (
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => downloadCSV(mappingRows as unknown as Record<string, unknown>[], 'mapping_flags.csv')}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 transition-colors whitespace-nowrap"
               >
                 ↓ Download CSV
-              </button>
+              </Button>
             )}
           </div>
 
@@ -541,16 +528,31 @@ export default function ProviderBandMappingPage() {
               {mappingGroups.length} provider{mappingGroups.length !== 1 ? 's' : ''} · {mappingGroups.reduce((s, g) => s + g.enrollees.length, 0)} enrollees shown
             </p>
             <div className="flex items-center gap-2">
-              <button onClick={() => setMSelected(new Set(mappingGroups.map(g => g.providerName)))}
-                className="text-xs text-indigo-600 hover:underline">Select all</button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMSelected(new Set(mappingGroups.map(g => g.providerName)))}
+                className="text-xs"
+              >
+                Select all
+              </Button>
               <span className="text-slate-300">|</span>
-              <button onClick={() => setMSelected(new Set())}
-                className="text-xs text-slate-500 hover:underline">Clear</button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMSelected(new Set())}
+                className="text-xs"
+              >
+                Clear
+              </Button>
               {mSelected.size > 0 && (
-                <button onClick={downloadMSelected}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={downloadMSelected}
+                >
                   ↓ Download {mSelected.size} selected
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -587,12 +589,13 @@ export default function ProviderBandMappingPage() {
               value={vMaxPrice} onChange={e => setVMaxPrice(e.target.value)}
               className="w-36 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             {adminUser && (
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => downloadCSV(visitRows as unknown as Record<string, unknown>[], 'visit_flags.csv')}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 transition-colors whitespace-nowrap"
               >
                 ↓ Download CSV
-              </button>
+              </Button>
             )}
           </div>
 
@@ -601,16 +604,31 @@ export default function ProviderBandMappingPage() {
               {visitGroups.length} provider{visitGroups.length !== 1 ? 's' : ''} · {visitRows.length} enrollees total
             </p>
             <div className="flex items-center gap-2">
-              <button onClick={() => setVSelected(new Set(visitGroups.map(g => g.providerName)))}
-                className="text-xs text-indigo-600 hover:underline">Select all</button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setVSelected(new Set(visitGroups.map(g => g.providerName)))}
+                className="text-xs"
+              >
+                Select all
+              </Button>
               <span className="text-slate-300">|</span>
-              <button onClick={() => setVSelected(new Set())}
-                className="text-xs text-slate-500 hover:underline">Clear</button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setVSelected(new Set())}
+                className="text-xs"
+              >
+                Clear
+              </Button>
               {vSelected.size > 0 && (
-                <button onClick={downloadVSelected}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={downloadVSelected}
+                >
                   ↓ Download {vSelected.size} selected
-                </button>
+                </Button>
               )}
             </div>
           </div>

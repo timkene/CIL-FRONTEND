@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { setSession, MODULE_ROUTES, type User } from '@/lib/auth'
+import { Card, Button, useToast } from '@/components/ui'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const [showPw,   setShowPw]   = useState(false)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
+  const toast = useToast()
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -26,19 +28,25 @@ export default function LoginPage() {
         .single()
 
       if (err || !staff) {
-        setError('Email address not found.')
+        const errorMsg = 'Email address not found.'
+        setError(errorMsg)
+        toast.error(errorMsg)
         setLoading(false)
         return
       }
 
       if (staff.status !== 'ACTIVE') {
-        setError('Your account is inactive. Contact your administrator.')
+        const errorMsg = 'Your account is inactive. Contact your administrator.'
+        setError(errorMsg)
+        toast.error(errorMsg)
         setLoading(false)
         return
       }
 
       if (staff.password !== password) {
-        setError('Incorrect password.')
+        const errorMsg = 'Incorrect password.'
+        setError(errorMsg)
+        toast.error(errorMsg)
         setLoading(false)
         return
       }
@@ -70,7 +78,9 @@ export default function LoginPage() {
       router.replace(first?.href ?? '/mlr')
 
     } catch {
-      setError('Something went wrong. Please try again.')
+      const errorMsg = 'Something went wrong. Please try again.'
+      setError(errorMsg)
+      toast.error(errorMsg)
       setLoading(false)
     }
   }
@@ -86,7 +96,7 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        <Card padding="lg" className="shadow-sm">
           <h2 className="text-lg font-bold mb-6 text-slate-900">Sign in to your account</h2>
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -121,15 +131,17 @@ export default function LoginPage() {
                   required
                   autoComplete="current-password"
                 />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setShowPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0"
+                  type="button"
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
                     {showPw ? 'visibility_off' : 'visibility'}
                   </span>
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -142,22 +154,17 @@ export default function LoginPage() {
             )}
 
             {/* Submit */}
-            <button
+            <Button
               type="submit"
-              disabled={loading}
-              className="w-full bg-[#137fec] hover:bg-[#0f6fd4] text-white font-bold py-3 rounded-lg text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
+              variant="primary"
+              size="lg"
+              loading={loading}
+              className="w-full mt-2"
             >
-              {loading ? (
-                <>
-                  <span className="material-symbols-outlined text-sm" style={{ animation: 'spin 1s linear infinite' }}>
-                    progress_activity
-                  </span>
-                  Signing in...
-                </>
-              ) : 'Sign in'}
-            </button>
+              Sign in
+            </Button>
           </form>
-        </div>
+        </Card>
 
         <p className="text-center text-xs text-slate-400 mt-6">
           Clearline International Limited · Analytics Portal

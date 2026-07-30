@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Button, Badge, Card, useToast } from '@/components/ui'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Report {
@@ -38,15 +39,12 @@ function StatusBadge({ status }: { status: string }) {
   const isComplete = status === 'complete'
   const isRunning  = status === 'running'
   const isError    = status.startsWith('error')
-  const cls = isComplete ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-    : isRunning  ? 'bg-amber-100 text-amber-700 border-amber-200'
-    : isError    ? 'bg-rose-100 text-rose-700 border-rose-200'
-    : 'bg-slate-100 text-slate-600 border-slate-200'
+  const variant = isComplete ? 'success' : isRunning ? 'warning' : isError ? 'error' : 'neutral'
+
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${cls}`}>
-      {isRunning && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}
+    <Badge variant={variant} size="sm" dot={isRunning}>
       {isComplete ? 'Complete' : isRunning ? 'Generating…' : isError ? 'Error' : status}
-    </span>
+    </Badge>
   )
 }
 
@@ -147,11 +145,11 @@ function MetricsStrip({ raw }: { raw: string }) {
         { label: 'Claims Approved 2026', val: Mn(m.claims_approved_2026_ytd), sub: `${m.claims_count_2026_ytd.toLocaleString()} claims` },
         { label: 'Inpatient % 2026',    val: `${m.inpatient_pct_2026}%`,  sub: `${m.denial_rate_2026}% denial rate` },
       ].map(c => (
-        <div key={c.label} className="bg-white rounded-xl border border-slate-200 p-4">
+        <Card key={c.label} padding="md">
           <p className="text-xs text-slate-500 font-medium">{c.label}</p>
           <p className="text-xl font-extrabold text-slate-800 mt-1">{c.val}</p>
           <p className="text-xs text-slate-400 mt-0.5">{c.sub}</p>
-        </div>
+        </Card>
       ))}
     </div>
   )
@@ -176,6 +174,7 @@ export default function ReportsPage() {
   const [running,   setRunning]   = useState(false)
   const [runMsg,    setRunMsg]    = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const toast = useToast()
 
   useEffect(() => { load() }, [])
 
@@ -199,11 +198,15 @@ export default function ReportsPage() {
     setRunMsg('Triggering report…')
     const { ok, message } = await triggerWorkflow()
     if (!ok) {
-      setRunMsg(`Failed: ${message}`)
+      const errorMsg = `Failed: ${message}`
+      setRunMsg(errorMsg)
+      toast.error(errorMsg)
       setRunning(false)
       return
     }
-    setRunMsg('Report is generating (takes ~5–10 minutes). This page will update automatically.')
+    const successMsg = 'Report is generating (takes ~5–10 minutes). This page will update automatically.'
+    setRunMsg(successMsg)
+    toast.info(successMsg, { duration: 8000 })
     // Poll every 30s for the new report
     pollRef.current = setInterval(async () => {
       const { data } = await supabase
@@ -215,7 +218,13 @@ export default function ReportsPage() {
       if (data?.status === 'complete' || data?.status?.startsWith('error')) {
         clearInterval(pollRef.current!)
         setRunning(false)
-        setRunMsg(data.status === 'complete' ? 'Report ready!' : `Error: ${data.status}`)
+        const finalMsg = data.status === 'complete' ? 'Report ready!' : `Error: ${data.status}`
+        setRunMsg(finalMsg)
+        if (data.status === 'complete') {
+          toast.success(finalMsg)
+        } else {
+          toast.error(finalMsg)
+        }
         load()
       }
     }, 30_000)
@@ -237,18 +246,15 @@ export default function ReportsPage() {
           <h2 className="text-xl font-bold tracking-tight">AI Medical Analytics</h2>
           <p className="text-xs text-slate-400">Powered by Claude Opus 4.6 · Runs last day of every month</p>
         </div>
-        <button
+        <Button
+          variant="primary"
+          size="md"
           onClick={handleRunNow}
-          disabled={running}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all
-            ${running
-              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              : 'bg-[#137fec] text-white hover:bg-[#0f6fd4]'}`}
+          loading={running}
+          leftIcon={!running ? <span>▶</span> : undefined}
         >
-          {running
-            ? <><span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" /> Generating…</>
-            : '▶ Run Report Now'}
-        </button>
+          Run Report Now
+        </Button>
       </header>
 
       <div className="p-4 md:p-8">
@@ -267,22 +273,23 @@ export default function ReportsPage() {
             ) : (
               <div className="space-y-1.5">
                 {reports.map(r => (
-                  <button
+                  <Button
                     key={r.id}
+                    variant={selected?.id === r.id ? 'primary' : 'outline'}
+                    size="md"
                     onClick={() => setSelected(r)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all text-sm
-                      ${selected?.id === r.id
-                        ? 'bg-[#137fec] text-white border-[#137fec]'
-                        : 'bg-white border-slate-200 text-slate-700 hover:border-[#137fec] hover:text-[#137fec]'}`}
+                    className="w-full justify-start"
                   >
-                    <div className="font-semibold">{r.report_period}</div>
-                    <div className={`text-xs mt-0.5 ${selected?.id === r.id ? 'text-blue-100' : 'text-slate-400'}`}>
-                      {r.generated_at ? new Date(r.generated_at).toLocaleDateString('en-GB') : '—'}
+                    <div className="text-left">
+                      <div className="font-semibold">{r.report_period}</div>
+                      <div className={`text-xs mt-0.5 ${selected?.id === r.id ? 'text-blue-100' : 'text-slate-400'}`}>
+                        {r.generated_at ? new Date(r.generated_at).toLocaleDateString('en-GB') : '—'}
+                      </div>
+                      <div className="mt-1">
+                        <StatusBadge status={r.status} />
+                      </div>
                     </div>
-                    <div className="mt-1">
-                      <StatusBadge status={r.status} />
-                    </div>
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
@@ -315,18 +322,21 @@ export default function ReportsPage() {
                     <h2 className="text-xl font-bold text-slate-800">Report: {selected.report_period}</h2>
                     <p className="text-xs text-slate-400 mt-0.5">Generated {selected.generated_at ? new Date(selected.generated_at).toLocaleString('en-NG') : '—'} · Claude Opus 4.6</p>
                   </div>
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                       const blob = new Blob([selected.report_markdown!], { type: 'text/markdown' })
                       const url = URL.createObjectURL(blob)
                       const a = document.createElement('a')
                       a.href = url; a.download = `clearline_ai_report_${selected.report_period}.md`; a.click()
                       URL.revokeObjectURL(url)
+                      toast.success('Report downloaded')
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-600 hover:border-[#137fec] hover:text-[#137fec] transition-colors"
+                    leftIcon={<span>↓</span>}
                   >
-                    ↓ Download
-                  </button>
+                    Download
+                  </Button>
                 </div>
                 {selected.key_metrics && <MetricsStrip raw={selected.key_metrics} />}
                 <MarkdownReport md={selected.report_markdown} />

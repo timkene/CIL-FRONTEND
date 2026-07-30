@@ -1,72 +1,25 @@
 'use client'
-import { useEffect, useState, useMemo } from 'react'
-import { supabase, MLRSummary } from '@/lib/supabase'
+import { useState, useMemo } from 'react'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { Button } from '@/components/ui'
+import { useMlrClients } from '@/hooks/useMlrData'
+import { fetchClientDetail } from '@/lib/repositories/mlr'
+import { MLR_STATUS_CLASSES } from '@/lib/constants'
+import type { MLRSummary, TopProvider, TopEnrollee, TopProcedure, ClientDetail } from '@/lib/types'
+import type { ReactNode } from 'react'
 
-// ── Types ────────────────────────────────────────────────────────────────────
-interface TopProvider {
-  rank:          number
-  provider_id:   string | null
-  provider_name: string | null
-  visit_count:   number
-  claim_rows:    number
-  total_cost:    number
-  pct_of_total:  number
-}
-interface TopEnrollee {
-  rank:           number
-  enrollee_id:    string
-  enrollee_name:  string | null
-  visit_count:    number
-  claim_rows:     number
-  total_cost:     number
-  pct_of_total:   number
-}
-interface TopProcedure {
-  rank:           number
-  procedure_code: string
-  procedure_desc: string | null
-  claim_count:    number
-  total_cost:     number
-  pct_of_total:   number
-}
-
-interface ClientDetail {
-  group_name:                    string
-  start_date:                    string
-  end_date:                      string
-  total_debit_amount:            number
-  actual_mlr:                    number
-  claims_paid_mlr:               number
-  actual_mlr_pct:                string
-  claims_paid_mlr_pct:           string
-  mlr_status:                    string
-  enrolled_members:              number
-  utilized_members:              number | null
-  member_utilization_pct:        number | null
-  actual_medical_cost_pmpm:      number
-  claims_paid_medical_cost_pmpm: number
-  premium_pmpm:                  number
-  contract_months:               number
-  providersCost:   TopProvider[]
-  providersCount:  TopProvider[]
-  enrolleesCost:   TopEnrollee[]
-  enrolleesCount:  TopEnrollee[]
-  proceduresCost:  TopProcedure[]
-  proceduresCount: TopProcedure[]
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function fmt(n: number) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmt(n: number): string {
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1_000)     return `₦${(n / 1_000).toFixed(0)}K`
   return `₦${n.toFixed(0)}`
 }
 
 function MlrBadge({ mlr }: { mlr: number }) {
-  const pct = (mlr * 100).toFixed(1) + '%'
-  if (mlr > 0.75) return <span className="text-rose-600 font-extrabold text-2xl">{pct}</span>
-  if (mlr > 0.70) return <span className="text-amber-500 font-extrabold text-2xl">{pct}</span>
-  return <span className="text-emerald-600 font-extrabold text-2xl">{pct}</span>
+  const pct   = (mlr * 100).toFixed(1) + '%'
+  const color = mlr > 0.75 ? 'text-rose-600' : mlr > 0.70 ? 'text-amber-500' : 'text-emerald-600'
+  return <span className={`font-extrabold text-2xl ${color}`}>{pct}</span>
 }
 
 function PctBar({ pct }: { pct: number }) {
@@ -82,15 +35,17 @@ function PctBar({ pct }: { pct: number }) {
 }
 
 // ── Generic Top-10 table ──────────────────────────────────────────────────────
-interface ColDef { header: string; render: (row: never) => React.ReactNode; align?: string }
+interface ColDef<T> { header: string; render: (row: T) => ReactNode; align?: string }
 
-function Top10Table({ title, icon, rows, cols, emptyMsg }: {
-  title: string; icon: string; rows: object[]; cols: ColDef[]; emptyMsg: string
+function Top10Table<T extends object>({
+  title, icon, rows, cols, emptyMsg,
+}: {
+  title: string; icon: string; rows: T[]; cols: ColDef<T>[]; emptyMsg: string
 }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
-        <span className="material-symbols-outlined text-[#137fec]" style={{fontSize:'18px'}}>{icon}</span>
+        <span className="material-symbols-outlined text-[#137fec]" style={{ fontSize: '18px' }}>{icon}</span>
         <h4 className="font-bold text-sm">{title}</h4>
         <span className="ml-auto text-xs text-slate-400 font-medium">{rows.length} rows</span>
       </div>
@@ -107,7 +62,7 @@ function Top10Table({ title, icon, rows, cols, emptyMsg }: {
               : rows.map((row, i) => (
                   <tr key={i} className="hover:bg-slate-50 transition-colors">
                     {cols.map(c => (
-                      <td key={c.header} className={`px-4 py-2.5 ${c.align ?? ''}`}>{c.render(row as never)}</td>
+                      <td key={c.header} className={`px-4 py-2.5 ${c.align ?? ''}`}>{c.render(row)}</td>
                     ))}
                   </tr>
                 ))
@@ -120,218 +75,173 @@ function Top10Table({ title, icon, rows, cols, emptyMsg }: {
 }
 
 // ── Column definitions ────────────────────────────────────────────────────────
-const provCostCols: ColDef[] = [
-  { header: '#',          render: (r: TopProvider) => <span className="text-slate-400 font-medium">{r.rank}</span> },
-  { header: 'Provider',   render: (r: TopProvider) => <span className="font-medium">{r.provider_name ?? r.provider_id ?? '—'}</span> },
-  { header: 'Visits',     render: (r: TopProvider) => r.visit_count.toLocaleString(), align: 'text-right' },
-  { header: 'Total Cost', render: (r: TopProvider) => <span className="font-bold">{fmt(r.total_cost)}</span>, align: 'text-right' },
-  { header: '% of Total', render: (r: TopProvider) => <PctBar pct={r.pct_of_total} />, align: 'w-36' },
+const provCostCols: ColDef<TopProvider>[] = [
+  { header: '#',          render: r => <span className="text-slate-400 font-medium">{r.rank}</span> },
+  { header: 'Provider',   render: r => <span className="font-medium">{r.provider_name ?? r.provider_id ?? '—'}</span> },
+  { header: 'Visits',     render: r => r.visit_count.toLocaleString(), align: 'text-right' },
+  { header: 'Total Cost', render: r => <span className="font-bold">{fmt(r.total_cost)}</span>, align: 'text-right' },
+  { header: '% of Total', render: r => <PctBar pct={r.pct_of_total} />, align: 'w-36' },
 ]
-const provCountCols: ColDef[] = [
-  { header: '#',        render: (r: TopProvider) => <span className="text-slate-400 font-medium">{r.rank}</span> },
-  { header: 'Provider', render: (r: TopProvider) => <span className="font-medium">{r.provider_name ?? r.provider_id ?? '—'}</span> },
-  { header: 'Visits',   render: (r: TopProvider) => <span className="font-bold">{r.visit_count.toLocaleString()}</span>, align: 'text-right' },
-  { header: 'Claims',   render: (r: TopProvider) => r.claim_rows.toLocaleString(), align: 'text-right' },
-  { header: 'Cost',     render: (r: TopProvider) => fmt(r.total_cost), align: 'text-right' },
+const provCountCols: ColDef<TopProvider>[] = [
+  { header: '#',        render: r => <span className="text-slate-400 font-medium">{r.rank}</span> },
+  { header: 'Provider', render: r => <span className="font-medium">{r.provider_name ?? r.provider_id ?? '—'}</span> },
+  { header: 'Visits',   render: r => <span className="font-bold">{r.visit_count.toLocaleString()}</span>, align: 'text-right' },
+  { header: 'Claims',   render: r => r.claim_rows.toLocaleString(), align: 'text-right' },
+  { header: 'Cost',     render: r => fmt(r.total_cost), align: 'text-right' },
 ]
-const enrCostCols: ColDef[] = [
-  { header: '#',          render: (r: TopEnrollee) => <span className="text-slate-400 font-medium">{r.rank}</span> },
-  { header: 'Enrollee',   render: (r: TopEnrollee) => <span className="font-medium">{r.enrollee_name ?? r.enrollee_id}</span> },
-  { header: 'Visits',     render: (r: TopEnrollee) => r.visit_count.toLocaleString(), align: 'text-right' },
-  { header: 'Total Cost', render: (r: TopEnrollee) => <span className="font-bold">{fmt(r.total_cost)}</span>, align: 'text-right' },
-  { header: '% of Total', render: (r: TopEnrollee) => <PctBar pct={r.pct_of_total} />, align: 'w-36' },
+const enrCostCols: ColDef<TopEnrollee>[] = [
+  { header: '#',          render: r => <span className="text-slate-400 font-medium">{r.rank}</span> },
+  { header: 'Enrollee',   render: r => <span className="font-medium">{r.enrollee_name ?? r.enrollee_id}</span> },
+  { header: 'Visits',     render: r => r.visit_count.toLocaleString(), align: 'text-right' },
+  { header: 'Total Cost', render: r => <span className="font-bold">{fmt(r.total_cost)}</span>, align: 'text-right' },
+  { header: '% of Total', render: r => <PctBar pct={r.pct_of_total} />, align: 'w-36' },
 ]
-const enrCountCols: ColDef[] = [
-  { header: '#',        render: (r: TopEnrollee) => <span className="text-slate-400 font-medium">{r.rank}</span> },
-  { header: 'Enrollee', render: (r: TopEnrollee) => <span className="font-medium">{r.enrollee_name ?? r.enrollee_id}</span> },
-  { header: 'Visits',   render: (r: TopEnrollee) => <span className="font-bold">{r.visit_count.toLocaleString()}</span>, align: 'text-right' },
-  { header: 'Claims',   render: (r: TopEnrollee) => r.claim_rows.toLocaleString(), align: 'text-right' },
-  { header: 'Cost',     render: (r: TopEnrollee) => fmt(r.total_cost), align: 'text-right' },
+const enrCountCols: ColDef<TopEnrollee>[] = [
+  { header: '#',        render: r => <span className="text-slate-400 font-medium">{r.rank}</span> },
+  { header: 'Enrollee', render: r => <span className="font-medium">{r.enrollee_name ?? r.enrollee_id}</span> },
+  { header: 'Visits',   render: r => <span className="font-bold">{r.visit_count.toLocaleString()}</span>, align: 'text-right' },
+  { header: 'Claims',   render: r => r.claim_rows.toLocaleString(), align: 'text-right' },
+  { header: 'Cost',     render: r => fmt(r.total_cost), align: 'text-right' },
 ]
-const procCostCols: ColDef[] = [
-  { header: '#',          render: (r: TopProcedure) => <span className="text-slate-400 font-medium">{r.rank}</span> },
-  { header: 'Procedure',  render: (r: TopProcedure) => (
-    <div><p className="font-medium">{r.procedure_desc ?? r.procedure_code}</p><p className="text-slate-400 text-[10px]">{r.procedure_code}</p></div>
-  )},
-  { header: 'Claims',     render: (r: TopProcedure) => r.claim_count.toLocaleString(), align: 'text-right' },
-  { header: 'Total Cost', render: (r: TopProcedure) => <span className="font-bold">{fmt(r.total_cost)}</span>, align: 'text-right' },
-  { header: '% of Total', render: (r: TopProcedure) => <PctBar pct={r.pct_of_total} />, align: 'w-36' },
+const procCostCols: ColDef<TopProcedure>[] = [
+  { header: '#',          render: r => <span className="text-slate-400 font-medium">{r.rank}</span> },
+  { header: 'Procedure',  render: r => <div><p className="font-medium">{r.procedure_desc ?? r.procedure_code}</p><p className="text-slate-400 text-[10px]">{r.procedure_code}</p></div> },
+  { header: 'Claims',     render: r => r.claim_count.toLocaleString(), align: 'text-right' },
+  { header: 'Total Cost', render: r => <span className="font-bold">{fmt(r.total_cost)}</span>, align: 'text-right' },
+  { header: '% of Total', render: r => <PctBar pct={r.pct_of_total} />, align: 'w-36' },
 ]
-const procCountCols: ColDef[] = [
-  { header: '#',         render: (r: TopProcedure) => <span className="text-slate-400 font-medium">{r.rank}</span> },
-  { header: 'Procedure', render: (r: TopProcedure) => (
-    <div><p className="font-medium">{r.procedure_desc ?? r.procedure_code}</p><p className="text-slate-400 text-[10px]">{r.procedure_code}</p></div>
-  )},
-  { header: 'Claims',   render: (r: TopProcedure) => <span className="font-bold">{r.claim_count.toLocaleString()}</span>, align: 'text-right' },
-  { header: 'Cost',     render: (r: TopProcedure) => fmt(r.total_cost), align: 'text-right' },
+const procCountCols: ColDef<TopProcedure>[] = [
+  { header: '#',         render: r => <span className="text-slate-400 font-medium">{r.rank}</span> },
+  { header: 'Procedure', render: r => <div><p className="font-medium">{r.procedure_desc ?? r.procedure_code}</p><p className="text-slate-400 text-[10px]">{r.procedure_code}</p></div> },
+  { header: 'Claims',    render: r => <span className="font-bold">{r.claim_count.toLocaleString()}</span>, align: 'text-right' },
+  { header: 'Cost',      render: r => fmt(r.total_cost), align: 'text-right' },
 ]
 
-// ── Main page ────────────────────────────────────────────────────────────────
+// ── Stat card builder ─────────────────────────────────────────────────────────
+function buildStatCards(detail: ClientDetail) {
+  const { summary: s } = detail
+  const statusCls = MLR_STATUS_CLASSES[s.mlr_status as keyof typeof MLR_STATUS_CLASSES] ?? MLR_STATUS_CLASSES.PROFITABLE
+  return [
+    { label: 'Actual MLR',           value: <MlrBadge mlr={s.actual_mlr} />,       sub: s.actual_mlr_pct,    icon: 'monitoring',            iconBg: statusCls.icon, iconColor: statusCls.text },
+    { label: 'Claims-Paid MLR',       value: <MlrBadge mlr={s.claims_paid_mlr} />,  sub: s.claims_paid_mlr_pct, icon: 'receipt_long',         iconBg: statusCls.icon, iconColor: statusCls.text },
+    { label: 'Member Utilization',    value: <span className={`font-extrabold text-2xl ${(s.member_utilization_pct ?? 0) > 75 ? 'text-rose-600' : (s.member_utilization_pct ?? 0) >= 50 ? 'text-amber-500' : 'text-emerald-600'}`}>{s.member_utilization_pct != null ? `${s.member_utilization_pct.toFixed(1)}%` : '—'}</span>, sub: `${s.utilized_members ?? 0} of ${s.enrolled_members} members`, icon: 'group', iconBg: 'bg-[#137fec]/10', iconColor: 'text-[#137fec]' },
+    { label: 'Actual Medical PMPM',   value: <span className="font-extrabold text-2xl text-slate-800">{fmt(s.actual_medical_cost_pmpm)}</span>,   sub: 'Actual medical cost per member per month',  icon: 'local_hospital',         iconBg: 'bg-purple-500/10', iconColor: 'text-purple-500'  },
+    { label: 'Claims-Paid PMPM',      value: <span className="font-extrabold text-2xl text-slate-800">{fmt(s.claims_paid_medical_cost_pmpm)}</span>, sub: 'Claims-paid cost per member per month', icon: 'payments',               iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500'  },
+    { label: 'Premium PMPM',          value: <span className="font-extrabold text-2xl text-emerald-600">{fmt(s.premium_pmpm)}</span>,               sub: `₦${s.total_debit_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ÷ ${s.enrolled_members} members × ${s.contract_months} mo`, icon: 'account_balance_wallet', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500' },
+  ]
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function ClientAnalysisPage() {
-  const [clients,       setClients]       = useState<MLRSummary[]>([])
+  const { data: clients, loading: listLoading } = useMlrClients()
   const [search,        setSearch]        = useState('')
   const [open,          setOpen]          = useState(false)
-  const [listLoading,   setListLoading]   = useState(true)
   const [result,        setResult]        = useState<ClientDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError,   setDetailError]   = useState<string | null>(null)
 
-  useEffect(() => {
-    supabase
-      .from('mlr_summary')
-      .select('*')
-      .eq('had_error', false)
-      .gt('total_debit_amount', 0)
-      .order('group_name')
-      .then(({ data }) => { setClients(data ?? []); setListLoading(false) })
-  }, [])
-
-  const filtered = useMemo(() =>
-    clients.filter(c => c.group_name.toLowerCase().includes(search.toLowerCase())),
-    [clients, search]
-  )
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return (clients ?? []).filter(c => c.group_name.toLowerCase().includes(q))
+  }, [clients, search])
 
   async function selectClient(c: MLRSummary) {
     setSearch('')
     setOpen(false)
     setResult(null)
+    setDetailError(null)
     setDetailLoading(true)
-
-    const [provRes, enrRes, procRes] = await Promise.all([
-      supabase.from('mlr_top_providers').select('*').eq('summary_id', c.id),
-      supabase.from('mlr_top_enrollees').select('*').eq('summary_id', c.id),
-      supabase.from('mlr_top_procedures').select('*').eq('summary_id', c.id),
-    ])
-
-    const byRank = (a: {rank:number;rank_by:string}, b: {rank:number;rank_by:string}) => a.rank - b.rank
-    const providers  = (provRes.data  ?? []) as (TopProvider  & {rank_by:string})[]
-    const enrollees  = (enrRes.data   ?? []) as (TopEnrollee  & {rank_by:string})[]
-    const procedures = (procRes.data  ?? []) as (TopProcedure & {rank_by:string})[]
-
-    setResult({
-      group_name:                    c.group_name.trim(),
-      start_date:                    c.start_date,
-      end_date:                      c.end_date,
-      total_debit_amount:            c.total_debit_amount,
-      actual_mlr:                    c.actual_mlr,
-      claims_paid_mlr:               c.claims_paid_mlr,
-      actual_mlr_pct:                c.actual_mlr_pct,
-      claims_paid_mlr_pct:           c.claims_paid_mlr_pct,
-      mlr_status:                    c.mlr_status,
-      enrolled_members:              c.enrolled_members,
-      utilized_members:              c.utilized_members,
-      member_utilization_pct:        c.member_utilization_pct,
-      actual_medical_cost_pmpm:      c.actual_medical_cost_pmpm,
-      claims_paid_medical_cost_pmpm: c.claims_paid_medical_cost_pmpm,
-      premium_pmpm:                  c.premium_pmpm,
-      contract_months:               c.contract_months,
-      providersCost:   providers.filter(r => r.rank_by === 'cost').sort(byRank),
-      providersCount:  providers.filter(r => r.rank_by === 'count').sort(byRank),
-      enrolleesCost:   enrollees.filter(r => r.rank_by === 'cost').sort(byRank),
-      enrolleesCount:  enrollees.filter(r => r.rank_by === 'count').sort(byRank),
-      proceduresCost:  procedures.filter(r => r.rank_by === 'cost').sort(byRank),
-      proceduresCount: procedures.filter(r => r.rank_by === 'count').sort(byRank),
-    })
-    setDetailLoading(false)
+    try {
+      setResult(await fetchClientDetail(c))
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : 'Failed to load client detail')
+    } finally {
+      setDetailLoading(false)
+    }
   }
 
-  const statCards = result ? [
-    {
-      label: 'Actual MLR',
-      value: <MlrBadge mlr={result.actual_mlr} />,
-      sub:   result.actual_mlr_pct,
-      icon:  'monitoring',
-      iconBg:    result.actual_mlr > 0.75 ? 'bg-rose-500/10'  : result.actual_mlr > 0.70 ? 'bg-amber-500/10'  : 'bg-emerald-500/10',
-      iconColor: result.actual_mlr > 0.75 ? 'text-rose-500'   : result.actual_mlr > 0.70 ? 'text-amber-500'   : 'text-emerald-600',
-    },
-    {
-      label: 'Claims-Paid MLR',
-      value: <MlrBadge mlr={result.claims_paid_mlr} />,
-      sub:   result.claims_paid_mlr_pct,
-      icon:  'receipt_long',
-      iconBg:    result.claims_paid_mlr > 0.75 ? 'bg-rose-500/10' : result.claims_paid_mlr > 0.70 ? 'bg-amber-500/10' : 'bg-emerald-500/10',
-      iconColor: result.claims_paid_mlr > 0.75 ? 'text-rose-500'  : result.claims_paid_mlr > 0.70 ? 'text-amber-500'  : 'text-emerald-600',
-    },
-    {
-      label: 'Member Utilization',
-      value: <span className={`font-extrabold text-2xl ${
-        (result.member_utilization_pct ?? 0) > 75 ? 'text-rose-600' :
-        (result.member_utilization_pct ?? 0) >= 50 ? 'text-amber-500' : 'text-emerald-600'
-      }`}>{result.member_utilization_pct != null ? `${result.member_utilization_pct.toFixed(1)}%` : '—'}</span>,
-      sub:   `${result.utilized_members ?? 0} of ${result.enrolled_members} members`,
-      icon:  'group',
-      iconBg: 'bg-[#137fec]/10', iconColor: 'text-[#137fec]',
-    },
-    {
-      label: 'Actual Medical PMPM',
-      value: <span className="font-extrabold text-2xl text-slate-800">{fmt(result.actual_medical_cost_pmpm)}</span>,
-      sub:   'Actual medical cost per member per month',
-      icon:  'local_hospital',
-      iconBg: 'bg-purple-500/10', iconColor: 'text-purple-500',
-    },
-    {
-      label: 'Claims-Paid PMPM',
-      value: <span className="font-extrabold text-2xl text-slate-800">{fmt(result.claims_paid_medical_cost_pmpm)}</span>,
-      sub:   'Claims-paid cost per member per month',
-      icon:  'payments',
-      iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500',
-    },
-    {
-      label: 'Premium PMPM',
-      value: <span className="font-extrabold text-2xl text-emerald-600">{fmt(result.premium_pmpm)}</span>,
-      sub:   `₦${result.total_debit_amount.toLocaleString(undefined,{maximumFractionDigits:0})} ÷ ${result.enrolled_members} members × ${result.contract_months} mo`,
-      icon:  'account_balance_wallet',
-      iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500',
-    },
-  ] : []
+  const statusCls = result
+    ? MLR_STATUS_CLASSES[result.summary.mlr_status as keyof typeof MLR_STATUS_CLASSES] ?? MLR_STATUS_CLASSES.PROFITABLE
+    : null
 
   return (
     <>
-      <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between pl-14 pr-4 md:px-8 sticky top-0 z-10">
-        <h2 className="text-xl font-bold tracking-tight">Client Analysis</h2>
-        {result && (
-          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
-            <span className="material-symbols-outlined" style={{fontSize:'16px'}}>calendar_today</span>
-            {result.start_date} → {result.end_date}
-            <span className={`ml-2 px-2 py-0.5 rounded font-bold ${
-              result.mlr_status === 'LOSS'    ? 'bg-rose-100 text-rose-700' :
-              result.mlr_status === 'WARNING' ? 'bg-amber-100 text-amber-700' :
-                                                'bg-emerald-100 text-emerald-700'
-            }`}>{result.mlr_status}</span>
-          </div>
-        )}
-      </header>
+      <PageHeader
+        title="Client Analysis"
+        right={result && statusCls ? (
+          <>
+            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>calendar_today</span>
+            {result.summary.start_date} → {result.summary.end_date}
+            <span className={`ml-2 px-2 py-0.5 rounded font-bold ${statusCls.text} ${statusCls.bg}`}>
+              {result.summary.mlr_status}
+            </span>
+          </>
+        ) : undefined}
+      />
 
       <div className="p-4 md:p-8 space-y-6 md:space-y-8">
+        {/* Action buttons */}
+        {result && (
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setResult(null); setSearch('') }}
+              leftIcon={<span className="material-symbols-outlined">arrow_back</span>}
+            >
+              Back to Search
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => alert('Export functionality - coming soon!')}
+              leftIcon={<span className="material-symbols-outlined">download</span>}
+            >
+              Export Report
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => window.print()}
+              leftIcon={<span className="material-symbols-outlined">print</span>}
+            >
+              Print
+            </Button>
+          </div>
+        )}
 
         {/* Search */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
             <input
               className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#137fec] outline-none font-medium"
-              placeholder={listLoading ? 'Loading clients...' : `Search ${clients.length} clients...`}
-              value={result ? result.group_name : search}
+              placeholder={listLoading ? 'Loading clients...' : `Search ${clients?.length ?? 0} clients...`}
+              value={result ? result.summary.group_name.trim() : search}
               onFocus={() => { setOpen(true); if (result) { setSearch(''); setResult(null) } }}
               onChange={e => { setSearch(e.target.value); setResult(null); setOpen(true) }}
               onBlur={() => setTimeout(() => setOpen(false), 150)}
             />
             {open && filtered.length > 0 && (
               <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
-                {filtered.map(c => (
-                  <button
-                    key={c.id}
-                    className="w-full text-left px-4 py-2.5 hover:bg-[#137fec]/5 text-sm transition-colors border-b border-slate-50 last:border-0 flex items-center"
-                    onMouseDown={() => selectClient(c)}
-                  >
-                    <span className="font-medium flex-1">{c.group_name.trim()}</span>
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded mr-2 ${
-                      c.mlr_status === 'LOSS'    ? 'bg-rose-100 text-rose-700' :
-                      c.mlr_status === 'WARNING' ? 'bg-amber-100 text-amber-700' :
-                                                   'bg-emerald-100 text-emerald-700'
-                    }`}>{c.mlr_status}</span>
-                    <span className="text-slate-400 text-xs">{c.actual_mlr_pct}</span>
-                  </button>
-                ))}
+                {filtered.map(c => {
+                  const cls = MLR_STATUS_CLASSES[c.mlr_status as keyof typeof MLR_STATUS_CLASSES] ?? MLR_STATUS_CLASSES.PROFITABLE
+                  return (
+                    <button
+                      key={c.id}
+                      className="w-full text-left px-4 py-2.5 hover:bg-[#137fec]/5 text-sm transition-colors border-b border-slate-50 last:border-0 flex items-center"
+                      onMouseDown={() => selectClient(c)}
+                    >
+                      <span className="font-medium flex-1">{c.group_name.trim()}</span>
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded mr-2 ${cls.text} ${cls.bg}`}>
+                        {c.mlr_status}
+                      </span>
+                      <span className="text-slate-400 text-xs">{c.actual_mlr_pct}</span>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -340,8 +250,8 @@ export default function ClientAnalysisPage() {
           )}
         </div>
 
-        {/* Empty state */}
-        {!result && !detailLoading && (
+        {/* States */}
+        {!result && !detailLoading && !detailError && (
           <div className="flex flex-col items-center justify-center py-20 text-slate-300">
             <span className="material-symbols-outlined text-6xl mb-4">manage_search</span>
             <p className="text-base font-medium text-slate-400">No client selected</p>
@@ -349,68 +259,55 @@ export default function ClientAnalysisPage() {
           </div>
         )}
 
-        {/* Loading */}
-        {detailLoading && (
-          <div className="flex items-center justify-center py-16">
-            <span className="material-symbols-outlined text-4xl text-[#137fec]" style={{animation:'spin 1s linear infinite'}}>progress_activity</span>
-          </div>
+        {detailLoading && <LoadingSpinner fullPage={false} />}
+
+        {detailError && (
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-rose-700 text-sm">{detailError}</div>
         )}
 
         {/* Results */}
-        {result && !detailLoading && (
-          <>
-            <div className="flex items-center gap-3">
-              <h3 className="text-lg font-bold">{result.group_name}</h3>
-              <span className="text-slate-400 text-sm">{result.start_date} → {result.end_date}</span>
-            </div>
+        {result && !detailLoading && (() => {
+          const { summary: s } = result
+          const statCards = buildStatCards(result)
+          return (
+            <>
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-bold">{s.group_name.trim()}</h3>
+                <span className="text-slate-400 text-sm">{s.start_date} → {s.end_date}</span>
+              </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-              {statCards.map(c => (
-                <div key={c.label} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between">
-                  <div className="flex justify-between items-start">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider leading-tight">{c.label}</p>
-                    <span className={`material-symbols-outlined ${c.iconColor} ${c.iconBg} p-1.5 rounded-lg`} style={{fontSize:'20px'}}>{c.icon}</span>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
+                {statCards.map(c => (
+                  <div key={c.label} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between">
+                    <div className="flex justify-between items-start">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider leading-tight">{c.label}</p>
+                      <span className={`material-symbols-outlined ${c.iconColor} ${c.iconBg} p-1.5 rounded-lg`} style={{ fontSize: '20px' }}>{c.icon}</span>
+                    </div>
+                    <div className="mt-3">{c.value}</div>
+                    <p className="text-[11px] text-slate-400 mt-2 leading-tight">{c.sub}</p>
                   </div>
-                  <div className="mt-3">{c.value}</div>
-                  <p className="text-[11px] text-slate-400 mt-2 leading-tight">{c.sub}</p>
+                ))}
+              </div>
+
+              {[
+                { label: 'Top 10 Providers',  icon: 'local_hospital', costRows: result.providersCost,  countRows: result.providersCount,  costCols: provCostCols,  countCols: provCountCols,  empty: 'No provider data'  },
+                { label: 'Top 10 Enrollees',   icon: 'person',         costRows: result.enrolleesCost,  countRows: result.enrolleesCount,  costCols: enrCostCols,   countCols: enrCountCols,   empty: 'No enrollee data'  },
+                { label: 'Top 10 Procedures',  icon: 'medical_services', costRows: result.proceduresCost, countRows: result.proceduresCount, costCols: procCostCols,  countCols: procCountCols,  empty: 'No procedure data' },
+              ].map(section => (
+                <div key={section.label}>
+                  <h3 className="text-base font-bold mb-3 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#137fec]" style={{ fontSize: '20px' }}>{section.icon}</span>
+                    {section.label}
+                  </h3>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                    <Top10Table title="By Cost"        icon="payments" rows={section.costRows}  cols={section.costCols as ColDef<object>[]}  emptyMsg={section.empty} />
+                    <Top10Table title="By Visit Count" icon="numbers"  rows={section.countRows} cols={section.countCols as ColDef<object>[]} emptyMsg={section.empty} />
+                  </div>
                 </div>
               ))}
-            </div>
-
-            <div>
-              <h3 className="text-base font-bold mb-3 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#137fec]" style={{fontSize:'20px'}}>local_hospital</span>
-                Top 10 Providers
-              </h3>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                <Top10Table title="By Cost"        icon="payments" rows={result.providersCost}  cols={provCostCols}  emptyMsg="No provider data" />
-                <Top10Table title="By Visit Count" icon="numbers"  rows={result.providersCount} cols={provCountCols} emptyMsg="No provider data" />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-base font-bold mb-3 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#137fec]" style={{fontSize:'20px'}}>person</span>
-                Top 10 Enrollees
-              </h3>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                <Top10Table title="By Cost"        icon="payments" rows={result.enrolleesCost}  cols={enrCostCols}  emptyMsg="No enrollee data" />
-                <Top10Table title="By Visit Count" icon="numbers"  rows={result.enrolleesCount} cols={enrCountCols} emptyMsg="No enrollee data" />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-base font-bold mb-3 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#137fec]" style={{fontSize:'20px'}}>medical_services</span>
-                Top 10 Procedures
-              </h3>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                <Top10Table title="By Cost"        icon="payments" rows={result.proceduresCost}  cols={procCostCols}  emptyMsg="No procedure data" />
-                <Top10Table title="By Claim Count" icon="numbers"  rows={result.proceduresCount} cols={procCountCols} emptyMsg="No procedure data" />
-              </div>
-            </div>
-          </>
-        )}
+            </>
+          )
+        })()}
       </div>
     </>
   )

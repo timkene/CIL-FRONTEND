@@ -5,6 +5,8 @@ import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
+import { Card, KPICard, Button, Badge, Table, useToast } from '@/components/ui'
+import type { Column } from '@/components/ui'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface KpiRow {
@@ -154,29 +156,32 @@ function SectionHead({ title, subtitle }: { title: string; subtitle?: string }) 
 function SummarySection({ d }: { d: KpiRow }) {
   const CY = d.current_year, PY = d.last_year
   const cards = [
-    { label: `Cash Collected ${CY}`,         val: d.cash_collected_ytd,         prev: d.cash_collected_sply,        color: 'bg-blue-50 border-blue-200',    text: 'text-blue-700'   },
-    { label: `Claims (Encounter) ${CY}`,      val: d.claims_paid_encounter_ytd,   prev: d.claims_paid_encounter_sply, color: 'bg-indigo-50 border-indigo-200',text: 'text-indigo-700' },
-    { label: `Claims (Submitted) ${CY}`,      val: d.claims_paid_submitted_ytd,   prev: d.claims_paid_submitted_sply, color: 'bg-violet-50 border-violet-200',text: 'text-violet-700' },
-    { label: `Cash Collected ${PY}`,          val: d.cash_collected_sply,         prev: null,                         color: 'bg-slate-50 border-slate-200',  text: 'text-slate-700'  },
-    { label: `Claims (Encounter) ${PY}`,      val: d.claims_paid_encounter_sply,  prev: null,                         color: 'bg-slate-50 border-slate-200',  text: 'text-slate-700'  },
-    { label: `Claims (Submitted) ${PY}`,      val: d.claims_paid_submitted_sply,  prev: null,                         color: 'bg-slate-50 border-slate-200',  text: 'text-slate-700'  },
-    { label: `MLR (Encounter) ${CY}`,         val: null, pct: d.mlr_encounter_pct, prev: null, color: mlrBg(d.mlr_encounter_pct), text: mlrText(d.mlr_encounter_pct) },
-    { label: `MLR (Submitted) ${CY}`,         val: null, pct: d.mlr_submitted_pct, prev: null, color: mlrBg(d.mlr_submitted_pct), text: mlrText(d.mlr_submitted_pct) },
+    { label: `Cash Collected ${CY}`,         val: d.cash_collected_ytd,         prev: d.cash_collected_sply,        variant: 'info' as const    },
+    { label: `Claims (Encounter) ${CY}`,      val: d.claims_paid_encounter_ytd,   prev: d.claims_paid_encounter_sply, variant: 'info' as const },
+    { label: `Claims (Submitted) ${CY}`,      val: d.claims_paid_submitted_ytd,   prev: d.claims_paid_submitted_sply, variant: 'info' as const },
+    { label: `Cash Collected ${PY}`,          val: d.cash_collected_sply,         prev: null,                         variant: 'default' as const  },
+    { label: `Claims (Encounter) ${PY}`,      val: d.claims_paid_encounter_sply,  prev: null,                         variant: 'default' as const  },
+    { label: `Claims (Submitted) ${PY}`,      val: d.claims_paid_submitted_sply,  prev: null,                         variant: 'default' as const  },
+    { label: `MLR (Encounter) ${CY}`,         val: null, pct: d.mlr_encounter_pct, prev: null, mlr: d.mlr_encounter_pct },
+    { label: `MLR (Submitted) ${CY}`,         val: null, pct: d.mlr_submitted_pct, prev: null, mlr: d.mlr_submitted_pct },
   ]
   return (
     <section>
       <SectionHead title="KPI Summary" subtitle={`YTD: ${d.ytd_from} → ${d.ytd_to}  ·  SPLY: ${d.sply_from} → ${d.sply_to}`} />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {cards.map(c => (
-          <div key={c.label} className={`rounded-xl border p-4 ${c.color}`}>
-            <p className="text-xs text-slate-500 font-medium leading-tight mb-1">{c.label}</p>
-            {'pct' in c && c.pct != null
-              ? <p className={`text-2xl font-extrabold ${c.text}`}>{Pct(c.pct)}</p>
-              : <p className={`text-xl font-extrabold ${c.text}`}>{Mn(c.val ?? 0)}</p>
+          <KPICard
+            key={c.label}
+            title={c.label}
+            value={'pct' in c && c.pct != null ? Pct(c.pct) : Mn(c.val ?? 0)}
+            variant={c.mlr != null ? (c.mlr <= 60 ? 'success' : c.mlr <= 80 ? 'warning' : 'danger') : c.variant}
+            footer={
+              <div className="space-y-1">
+                {c.val != null && c.prev != null && <div>{yoyArrow(c.val, c.prev)}</div>}
+                {c.val != null && <p className="text-xs text-slate-400">{N(c.val)}</p>}
+              </div>
             }
-            {c.val != null && c.prev != null && <div className="mt-1">{yoyArrow(c.val, c.prev)}</div>}
-            {c.val != null && <p className="text-xs text-slate-400 mt-0.5">{N(c.val)}</p>}
-          </div>
+          />
         ))}
       </div>
     </section>
@@ -203,11 +208,15 @@ function TrendsSection({ d }: { d: MonthlyTrends }) {
       <SectionHead title="Monthly Trends" subtitle="Current year vs same period last year" />
       <div className="flex gap-1 border-b border-slate-200 mb-4 overflow-x-auto">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap -mb-px
-              ${tab === t.id ? 'border-[#137fec] text-[#137fec]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <Button
+            key={t.id}
+            variant={tab === t.id ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => setTab(t.id)}
+            className={`border-b-2 rounded-none -mb-px ${tab === t.id ? 'border-[#137fec]' : 'border-transparent'}`}
+          >
             {t.label}
-          </button>
+          </Button>
         ))}
       </div>
       {isBar && (
@@ -245,43 +254,60 @@ function TrendsSection({ d }: { d: MonthlyTrends }) {
 // ── SECTION 3 — Contract Summary ───────────────────────────────────────────────
 function ContractSection({ rows }: { rows: ContractRow[] }) {
   const [search, setSearch] = useState('')
-  const filtered = rows.filter(r => r.group_name.toLowerCase().includes(search.toLowerCase()))
+  const filtered = rows.filter(r => r && r.group_name?.toLowerCase().includes(search.toLowerCase()))
+
+  const columns: Column<ContractRow>[] = [
+    {
+      key: 'group_name',
+      header: 'Company',
+      render: (row) => <span className="font-medium text-slate-800">{row?.group_name ?? '—'}</span>
+    },
+    {
+      key: 'previous_contract_start',
+      header: 'Prev Contract',
+      render: (row) => (
+        <span className="text-xs text-slate-500">
+          {row?.previous_contract_start ? `${row.previous_contract_start} → ${row.previous_contract_end}` : <span className="text-slate-300">—</span>}
+        </span>
+      )
+    },
+    {
+      key: 'previous_debit',
+      header: 'Prev Debit',
+      render: (row) => <span className="tabular-nums">{row?.previous_debit != null ? Mn(row.previous_debit) : <span className="text-slate-300">—</span>}</span>
+    },
+    {
+      key: 'current_contract_start',
+      header: 'Cur Contract',
+      render: (row) => <span className="text-xs text-slate-600">{row?.current_contract_start ?? '—'} → {row?.current_contract_end ?? '—'}</span>
+    },
+    {
+      key: 'current_debit',
+      header: 'Cur Debit',
+      render: (row) => <span className="tabular-nums">{row?.current_debit != null ? Mn(row.current_debit) : <span className="text-slate-300">—</span>}</span>
+    },
+    {
+      key: 'cash_collected_current',
+      header: 'Cash Collected',
+      render: (row) => <span className="tabular-nums">{row?.cash_collected_current != null ? Mn(row.cash_collected_current) : <span className="text-slate-300">—</span>}</span>
+    },
+    {
+      key: 'cash_vs_debit_pct',
+      header: 'Cash / Debit',
+      render: (row) => {
+        const p = row?.cash_vs_debit_pct
+        const pc = p == null ? '' : p >= 100 ? 'text-emerald-600 font-bold' : p >= 75 ? 'text-amber-600' : 'text-rose-600'
+        return <span className={`tabular-nums ${pc}`}>{Pct(p)}</span>
+      }
+    }
+  ]
+
   return (
     <section>
       <SectionHead title="Contract Summary" subtitle="Previous debit · Current debit · Cash collected per active contract" />
       <input type="text" placeholder="Search company…" value={search} onChange={e => setSearch(e.target.value)}
         className="mb-3 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#137fec] w-64" />
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              {['Company','Prev Contract','Prev Debit','Cur Contract','Cur Debit','Cash Collected','Cash / Debit'].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtered.map(r => {
-              const p = r.cash_vs_debit_pct
-              const pc = p == null ? '' : p >= 100 ? 'text-emerald-600 font-bold' : p >= 75 ? 'text-amber-600' : 'text-rose-600'
-              return (
-                <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-800 max-w-[200px] truncate">{r.group_name}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
-                    {r.previous_contract_start ? `${r.previous_contract_start} → ${r.previous_contract_end}` : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-4 py-3 tabular-nums whitespace-nowrap">{r.previous_debit != null ? Mn(r.previous_debit) : <span className="text-slate-300">—</span>}</td>
-                  <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{r.current_contract_start} → {r.current_contract_end}</td>
-                  <td className="px-4 py-3 tabular-nums whitespace-nowrap">{r.current_debit != null ? Mn(r.current_debit) : <span className="text-slate-300">—</span>}</td>
-                  <td className="px-4 py-3 tabular-nums whitespace-nowrap">{Mn(r.cash_collected_current)}</td>
-                  <td className={`px-4 py-3 tabular-nums whitespace-nowrap ${pc}`}>{Pct(p)}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-        {!filtered.length && <p className="text-center py-8 text-slate-400 text-sm">No results</p>}
-      </div>
+      <Table data={filtered} columns={columns} />
       <p className="text-xs text-slate-400 mt-2">{filtered.length} of {rows.length} companies</p>
     </section>
   )
@@ -299,64 +325,55 @@ function Top20Section({ rows }: { rows: Top20Row[] }) {
     { id: 'claims_sub_clients',  label: 'Top Clients (Claims Sub)' },
   ]
   const filtered = rows.filter(r => r.category === tab).sort((a, b) => a.rank - b.rank)
+
   function BandBadge({ band }: { band: string | null }) {
     if (!band) return <span className="text-slate-300">—</span>
     const k = band.trim().toUpperCase().replace(/^BAND\s?/, '')
-    const colors: Record<string, string> = {
-      A: 'bg-rose-100 text-rose-700', B: 'bg-amber-100 text-amber-700',
-      C: 'bg-sky-100 text-sky-700',   D: 'bg-emerald-100 text-emerald-700',
+    const variantMap: Record<string, 'danger' | 'warning' | 'info' | 'success' | 'default'> = {
+      A: 'danger', B: 'warning', C: 'info', D: 'success'
     }
-    return <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full ${colors[k] ?? 'bg-slate-100 text-slate-600'}`}>{band}</span>
+    return <Badge variant={variantMap[k] ?? 'default'}>{band}</Badge>
   }
+
+  const columnsProviders: Column<Top20Row>[] = [
+    { key: 'rank', header: '#', render: (row) => <span className="text-slate-400 font-mono text-xs">{row?.rank ?? '—'}</span> },
+    {
+      key: 'name',
+      header: 'Provider',
+      render: (row) => (
+        <div>
+          <div className="font-medium text-slate-800">{row?.name ?? '—'}</div>
+          {row?.provider_id && <div className="text-xs text-slate-400 font-mono">ID: {row.provider_id}</div>}
+        </div>
+      )
+    },
+    { key: 'provider_band', header: 'Band', render: (row) => row?.provider_band ? <BandBadge band={row.provider_band} /> : <span className="text-slate-300">—</span> },
+    { key: 'amount_ytd', header: 'Amount YTD', render: (row) => <span className="tabular-nums font-semibold text-[#137fec]">{row?.amount_ytd != null ? Mn(row.amount_ytd) : <span className="text-slate-300">—</span>}</span> }
+  ]
+
+  const columnsClients: Column<Top20Row>[] = [
+    { key: 'rank', header: '#', render: (row) => <span className="text-slate-400 font-mono text-xs">{row?.rank ?? '—'}</span> },
+    { key: 'name', header: 'Company', render: (row) => <span className="font-medium text-slate-800">{row?.name ?? '—'}</span> },
+    { key: 'amount_ytd', header: 'Amount YTD', render: (row) => <span className="tabular-nums font-semibold text-[#137fec]">{row?.amount_ytd != null ? Mn(row.amount_ytd) : <span className="text-slate-300">—</span>}</span> }
+  ]
+
   return (
     <section>
       <SectionHead title="Top 20 YTD" subtitle="Year-to-date costs by PA and claims" />
       <div className="flex gap-1 border-b border-slate-200 mb-4 overflow-x-auto">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap -mb-px
-              ${tab === t.id ? 'border-[#137fec] text-[#137fec]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <Button
+            key={t.id}
+            variant={tab === t.id ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => setTab(t.id)}
+            className={`border-b-2 rounded-none -mb-px ${tab === t.id ? 'border-[#137fec]' : 'border-transparent'}`}
+          >
             {t.label}
-          </button>
+          </Button>
         ))}
       </div>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide w-12">#</th>
-              {tab === 'pa_providers' ? (
-                <>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Provider</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Band</th>
-                </>
-              ) : (
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Company</th>
-              )}
-              <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Amount YTD</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtered.map(r => (
-              <tr key={r.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 text-slate-400 font-mono text-xs">{r.rank}</td>
-                {tab === 'pa_providers' ? (
-                  <>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">{r.name}</div>
-                      {r.provider_id && <div className="text-xs text-slate-400 font-mono">ID: {r.provider_id}</div>}
-                    </td>
-                    <td className="px-4 py-3"><BandBadge band={r.provider_band} /></td>
-                  </>
-                ) : (
-                  <td className="px-4 py-3 font-medium text-slate-800">{r.name}</td>
-                )}
-                <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#137fec]">{Mn(r.amount_ytd)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Table data={filtered} columns={tab === 'pa_providers' ? columnsProviders : columnsClients} />
     </section>
   )
 }
@@ -382,20 +399,28 @@ function CashBreakSection({ rows }: { rows: CashBreakRow[] }) {
       <div className="flex gap-3 mb-4 flex-wrap items-center">
         <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
           {(['pct', 'amount'] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all
-                ${mode === m ? 'bg-white text-[#137fec] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <Button
+              key={m}
+              variant={mode === m ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setMode(m)}
+              className={mode === m ? 'bg-white shadow-sm' : ''}
+            >
               {m === 'pct' ? '% of Cash' : 'Amount (₦)'}
-            </button>
+            </Button>
           ))}
         </div>
         <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
           {years.map(y => (
-            <button key={y} onClick={() => setYear(y)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all
-                ${year === y ? 'bg-white text-[#137fec] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <Button
+              key={y}
+              variant={year === y ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setYear(y)}
+              className={year === y ? 'bg-white shadow-sm' : ''}
+            >
               {y}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -412,33 +437,69 @@ function CashBreakSection({ rows }: { rows: CashBreakRow[] }) {
           <Bar dataKey="Remaining"    stackId="a" fill="#10b981" radius={[3,3,0,0]} />
         </BarChart>
       </ResponsiveContainer>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm mt-4">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
-            <tr>
-              {['Month','Cash','Salary & Pal','Expense','Commission','Remaining','Overhead %'].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtered.map(r => {
-              const oh = r.salary_palliative_pct + r.expense_pct + r.commission_pct
+      <Table
+        data={filtered}
+        columns={[
+          {
+            key: 'month_label',
+            header: 'Month',
+            render: (row) => <span className="font-medium text-slate-700">{row?.month_label ?? '—'} {row?.year ?? ''}</span>
+          },
+          {
+            key: 'total_cash',
+            header: 'Cash',
+            render: (row) => <span className="tabular-nums">{row?.total_cash != null ? Mn(row.total_cash) : <span className="text-slate-300">—</span>}</span>
+          },
+          {
+            key: 'salary_palliative',
+            header: 'Salary & Pal',
+            render: (row) => (
+              <span className="tabular-nums text-indigo-600">
+                {row?.salary_palliative != null ? Mn(row.salary_palliative) : <span className="text-slate-300">—</span>} <span className="text-xs text-slate-400">({row?.salary_palliative_pct ?? 0}%)</span>
+              </span>
+            )
+          },
+          {
+            key: 'expense',
+            header: 'Expense',
+            render: (row) => (
+              <span className="tabular-nums text-amber-600">
+                {row?.expense != null ? Mn(row.expense) : <span className="text-slate-300">—</span>} <span className="text-xs text-slate-400">({row?.expense_pct ?? 0}%)</span>
+              </span>
+            )
+          },
+          {
+            key: 'commission',
+            header: 'Commission',
+            render: (row) => (
+              <span className="tabular-nums text-rose-600">
+                {row?.commission != null ? Mn(row.commission) : <span className="text-slate-300">—</span>} <span className="text-xs text-slate-400">({row?.commission_pct ?? 0}%)</span>
+              </span>
+            )
+          },
+          {
+            key: 'remaining',
+            header: 'Remaining',
+            render: (row) => (
+              <span className="tabular-nums text-emerald-600">
+                {row?.remaining != null ? Mn(row.remaining) : <span className="text-slate-300">—</span>} <span className="text-xs text-slate-400">({row?.remaining_pct ?? 0}%)</span>
+              </span>
+            )
+          },
+          {
+            key: 'id',
+            header: 'Overhead %',
+            render: (row) => {
+              const oh = (row?.salary_palliative_pct ?? 0) + (row?.expense_pct ?? 0) + (row?.commission_pct ?? 0)
               return (
-                <tr key={r.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-700 whitespace-nowrap">{r.month_label} {r.year}</td>
-                  <td className="px-4 py-3 tabular-nums whitespace-nowrap">{Mn(r.total_cash)}</td>
-                  <td className="px-4 py-3 tabular-nums text-indigo-600 whitespace-nowrap">{Mn(r.salary_palliative)} <span className="text-xs text-slate-400">({r.salary_palliative_pct}%)</span></td>
-                  <td className="px-4 py-3 tabular-nums text-amber-600 whitespace-nowrap">{Mn(r.expense)} <span className="text-xs text-slate-400">({r.expense_pct}%)</span></td>
-                  <td className="px-4 py-3 tabular-nums text-rose-600 whitespace-nowrap">{Mn(r.commission)} <span className="text-xs text-slate-400">({r.commission_pct}%)</span></td>
-                  <td className="px-4 py-3 tabular-nums text-emerald-600 whitespace-nowrap">{Mn(r.remaining)} <span className="text-xs text-slate-400">({r.remaining_pct}%)</span></td>
-                  <td className={`px-4 py-3 tabular-nums font-bold whitespace-nowrap ${oh > 70 ? 'text-rose-600' : oh > 50 ? 'text-amber-600' : 'text-slate-700'}`}>{oh.toFixed(1)}%</td>
-                </tr>
+                <span className={`tabular-nums font-bold ${oh > 70 ? 'text-rose-600' : oh > 50 ? 'text-amber-600' : 'text-slate-700'}`}>
+                  {oh.toFixed(1)}%
+                </span>
               )
-            })}
-          </tbody>
-        </table>
-      </div>
+            }
+          }
+        ]}
+      />
     </section>
   )
 }
@@ -539,11 +600,7 @@ function PaymentScheduleSection({ rows }: { rows: PaymentScheduleRow[] }) {
                 className="w-full flex items-center justify-between px-5 py-4 bg-white hover:bg-slate-50 transition-colors text-left"
               >
                 <div className="flex items-center gap-3">
-                  {isCurrent && (
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-[#137fec]/10 text-[#137fec]">
-                      Current
-                    </span>
-                  )}
+                  {isCurrent && <Badge variant="info">Current</Badge>}
                   <span className="font-bold text-slate-800">{m.month_label}</span>
                   <span className="text-xs text-slate-400">{m.rows.length} group{m.rows.length !== 1 ? 's' : ''}</span>
                 </div>
@@ -586,19 +643,22 @@ function PaymentScheduleSection({ rows }: { rows: PaymentScheduleRow[] }) {
                               {r.group_name}
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PATTERN_COLOR[r.payment_pattern] ?? 'bg-slate-100 text-slate-600'}`}>
+                              <Badge variant={
+                                r.payment_pattern === 'monthly' ? 'info' :
+                                r.payment_pattern === 'quarterly' ? 'info' :
+                                r.payment_pattern === 'triannually' ? 'info' :
+                                r.payment_pattern === 'biannually' ? 'info' : 'default'
+                              }>
                                 {PATTERN_LABEL[r.payment_pattern] ?? r.payment_pattern}
-                              </span>
+                              </Badge>
                             </td>
                             <td className="px-4 py-3 tabular-nums whitespace-nowrap font-semibold text-slate-700">
                               {r.expected_amount != null ? N(r.expected_amount) : <span className="text-slate-300">—</span>}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
-                              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
-                                r.invoice_status === 'raised' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                              }`}>
+                              <Badge variant={r.invoice_status === 'raised' ? 'success' : 'warning'}>
                                 {r.invoice_status === 'raised' ? '✓' : '○'} {r.invoice_status}
-                              </span>
+                              </Badge>
                               {r.invoice_number && (
                                 <div className="text-xs text-slate-400 font-mono mt-0.5">{r.invoice_number}</div>
                               )}

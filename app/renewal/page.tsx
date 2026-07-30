@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Badge, Card, Button, useToast } from '@/components/ui'
 
 interface RenewalReport {
   id:             number
@@ -15,23 +16,12 @@ interface RenewalReport {
   week_year:      number
 }
 
-function DaysBadge({ days }: { days: number }) {
-  const color =
-    days <= 30  ? 'bg-rose-100 text-rose-700' :
-    days <= 60  ? 'bg-amber-100 text-amber-700' :
-                  'bg-blue-100 text-blue-700'
-  return (
-    <span className={`text-xs font-bold px-2 py-1 rounded ${color}`}>
-      {days}d left
-    </span>
-  )
-}
-
 export default function RenewalPage() {
   const [reports,  setReports]  = useState<RenewalReport[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
   const [search,   setSearch]   = useState('')
+  const toast = useToast()
 
   useEffect(() => {
     // First get the latest week_number + week_year
@@ -52,7 +42,13 @@ export default function RenewalPage() {
           .eq('week_year', week_year)
           .order('days_to_expiry', { ascending: true })
           .then(({ data, error: err }) => {
-            if (err) { setError(err.message); setLoading(false); return }
+            if (err) {
+              const errorMsg = err.message
+              setError(errorMsg)
+              toast.error(errorMsg)
+              setLoading(false)
+              return
+            }
             setReports(data ?? [])
             setLoading(false)
           })
@@ -127,14 +123,14 @@ export default function RenewalPage() {
                 { label: 'Expiring 31–60 days', count: within60, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', icon: 'schedule' },
                 { label: 'Expiring 61–90 days', count: within90, color: 'text-blue-600',  bg: 'bg-blue-50',  border: 'border-blue-200',  icon: 'event_upcoming' },
               ].map(c => (
-                <div key={c.label} className={`${c.bg} ${c.border} border rounded-xl p-4 md:p-5`}>
+                <Card key={c.label} padding="md" className={`${c.bg} ${c.border}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`material-symbols-outlined ${c.color}`} style={{ fontSize: '18px' }}>{c.icon}</span>
                     <p className="text-xs font-semibold text-slate-500 hidden sm:block">{c.label}</p>
                   </div>
                   <p className={`text-2xl md:text-3xl font-extrabold ${c.color}`}>{c.count}</p>
                   <p className="text-xs text-slate-400 mt-1 sm:hidden">{c.label}</p>
-                </div>
+                </Card>
               ))}
             </div>
 
@@ -180,7 +176,12 @@ export default function RenewalPage() {
                           {r.contract_start} → {r.contract_end}
                         </td>
                         <td className="px-4 md:px-6 py-4 text-center">
-                          <DaysBadge days={r.days_to_expiry} />
+                          <Badge
+                            variant={r.days_to_expiry <= 30 ? 'error' : r.days_to_expiry <= 60 ? 'warning' : 'info'}
+                            size="sm"
+                          >
+                            {r.days_to_expiry}d left
+                          </Badge>
                         </td>
                         <td className="px-4 md:px-6 py-4 text-slate-500 text-xs hidden md:table-cell whitespace-nowrap">
                           {new Date(r.generated_at).toLocaleDateString('en-GB', {
@@ -189,16 +190,16 @@ export default function RenewalPage() {
                         </td>
                         <td className="px-4 md:px-6 py-4 text-center">
                           {r.pdf_url ? (
-                            <a
-                              href={r.pdf_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#137fec]/10 text-[#137fec] rounded-lg text-xs font-bold hover:bg-[#137fec]/20 transition-colors"
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => window.open(r.pdf_url!, '_blank', 'noopener,noreferrer')}
+                              leftIcon={<span className="material-symbols-outlined" style={{ fontSize: '16px' }}>download</span>}
+                              className="text-[#137fec] hover:bg-[#137fec]/10"
                             >
-                              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>download</span>
                               <span className="hidden sm:inline">Download PDF</span>
                               <span className="sm:hidden">PDF</span>
-                            </a>
+                            </Button>
                           ) : (
                             <span className="text-slate-300 text-xs">—</span>
                           )}
