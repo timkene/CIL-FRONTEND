@@ -91,7 +91,9 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
   // key → supervisor-edited quantity / price / deny reason
   const [qtyEdits,     setQtyEdits]     = useState<Record<string, number>>({})
   const [priceEdits,   setPriceEdits]   = useState<Record<string, number>>({})
-  const [denyReasons,  setDenyReasons]  = useState<Record<string, string>>({})
+  // key → reason text. Required for: any decision override (Override → APPROVE/DENY),
+  // and for manual-entry rows left denied (never clinically vetted).
+  const [overrideReasons, setOverrideReasons] = useState<Record<string, string>>({})
   const [reviewer,     setReviewer]     = useState('Supervisor')
   const [notes,        setNotes]        = useState('')
   const [submitting,   setSubmitting]   = useState(false)
@@ -166,16 +168,21 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
   }
 
   async function doAccept() {
-    // Manual rows being denied always need a reason from the supervisor
+    // Manual rows left denied always need a reason (never clinically vetted)
     const manualDenyKeys = allItems
       .filter(({ eid, item }) =>
         item.drop_reason === 'Manual entry' && effectiveDecision(eid, item) === 'DENY'
       )
       .map(({ eid, item }) => rowKey(eid, item.procedure_code))
 
-    const missingReasons = manualDenyKeys.filter(k => !denyReasons[k]?.trim())
+    // Any genuine decision override (Override → APPROVE or Override → DENY)
+    // requires a reason so every override is auditable.
+    const overrideDecisionKeys = Object.keys(overrides)
+
+    const reasonRequiredKeys = Array.from(new Set([...manualDenyKeys, ...overrideDecisionKeys]))
+    const missingReasons = reasonRequiredKeys.filter(k => !overrideReasons[k]?.trim())
     if (missingReasons.length > 0) {
-      toast.error(`Denial reason required for ${missingReasons.length} manual row${missingReasons.length > 1 ? 's' : ''} before accepting`)
+      toast.error(`Reason required for ${missingReasons.length} row${missingReasons.length > 1 ? 's' : ''} before accepting`)
       return
     }
 
@@ -193,7 +200,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
         }
         if (qtyEdits[key]   != null) override.adjusted_quantity = qtyEdits[key]
         if (priceEdits[key] != null) override.adjusted_price    = priceEdits[key]
-        if (denyReasons[key]?.trim()) override.notes            = denyReasons[key].trim()
+        if (overrideReasons[key]?.trim()) override.notes        = overrideReasons[key].trim()
         return override
       }).filter(o => o.override_decision)
       const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}/accept`, {
@@ -449,17 +456,17 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                                 ) : (
                                   <span className="text-[10px] text-slate-300">Same as AI</span>
                                 )}
-                                {/* Compulsory denial reason for manual rows */}
-                                {item.drop_reason === 'Manual entry' && effective === 'DENY' && (
+                                {/* Compulsory reason: manual rows left denied, OR any overridden decision */}
+                                {(isOverridden || (item.drop_reason === 'Manual entry' && effective === 'DENY')) && (
                                   <div className="mt-1.5">
                                     <input
                                       type="text"
-                                      maxLength={100}
-                                      value={denyReasons[k] ?? ''}
-                                      onChange={e => setDenyReasons(prev => ({ ...prev, [k]: e.target.value }))}
-                                      placeholder="Denial reason *"
+                                      maxLength={200}
+                                      value={overrideReasons[k] ?? ''}
+                                      onChange={e => setOverrideReasons(prev => ({ ...prev, [k]: e.target.value }))}
+                                      placeholder={isOverridden ? 'Override reason *' : 'Denial reason *'}
                                       className={`w-36 text-[10px] border rounded px-1.5 py-0.5 focus:outline-none focus:border-rose-400 ${
-                                        !denyReasons[k]?.trim()
+                                        !overrideReasons[k]?.trim()
                                           ? 'border-rose-300 bg-rose-50/50 placeholder-rose-400'
                                           : 'border-slate-200'
                                       }`}
