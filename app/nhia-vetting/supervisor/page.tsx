@@ -47,6 +47,17 @@ interface VettingResult {
   error?:                 string
 }
 
+interface ReviewDraft {
+  reviewer?:         string
+  notes?:            string
+  overrides?:        Record<string, 'APPROVE' | 'DENY'>
+  qty_edits?:        Record<string, number>
+  price_edits?:      Record<string, number>
+  override_reasons?: Record<string, string>
+  saved_at?:         string
+  saved_by?:         string
+}
+
 interface Batch {
   batch_id:        string
   batch_name:      string
@@ -59,6 +70,7 @@ interface Batch {
   total_denied:    number
   total_amount:    number
   vetting_results: VettingResult[] | null
+  review_draft?:   ReviewDraft | null
 }
 
 interface RowOverride {
@@ -86,17 +98,21 @@ function rowKey(enrolleeId: string, procedureCode: string) {
 function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void }) {
   const [expanded,     setExpanded]     = useState(false)
   const [expandedLine, setExpandedLine] = useState<string | null>(null)
-  // key → 'APPROVE' | 'DENY' — only entries the supervisor has overridden
-  const [overrides,    setOverrides]    = useState<Record<string, 'APPROVE' | 'DENY'>>({})
+  const draft = batch.review_draft
+  // key → 'APPROVE' | 'DENY' — only entries the supervisor has overridden.
+  // Initialized from any previously saved draft so resuming a batch picks
+  // up exactly where the supervisor left off.
+  const [overrides,    setOverrides]    = useState<Record<string, 'APPROVE' | 'DENY'>>(() => draft?.overrides ?? {})
   // key → supervisor-edited quantity / price / deny reason
-  const [qtyEdits,     setQtyEdits]     = useState<Record<string, number>>({})
-  const [priceEdits,   setPriceEdits]   = useState<Record<string, number>>({})
+  const [qtyEdits,     setQtyEdits]     = useState<Record<string, number>>(() => draft?.qty_edits ?? {})
+  const [priceEdits,   setPriceEdits]   = useState<Record<string, number>>(() => draft?.price_edits ?? {})
   // key → reason text. Required for: any decision override (Override → APPROVE/DENY),
   // and for manual-entry rows left denied (never clinically vetted).
-  const [overrideReasons, setOverrideReasons] = useState<Record<string, string>>({})
-  const [reviewer,     setReviewer]     = useState('Supervisor')
-  const [notes,        setNotes]        = useState('')
+  const [overrideReasons, setOverrideReasons] = useState<Record<string, string>>(() => draft?.override_reasons ?? {})
+  const [reviewer,     setReviewer]     = useState(() => draft?.reviewer ?? 'Supervisor')
+  const [notes,        setNotes]        = useState(() => draft?.notes ?? '')
   const [submitting,   setSubmitting]   = useState(false)
+  const [savingDraft,  setSavingDraft]  = useState(false)
   const [batchRows,    setBatchRows]    = useState<BatchRow[]>([])
   const [rowsLoaded,   setRowsLoaded]   = useState(false)
   const toast = useToast()
@@ -230,6 +246,33 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
     }
   }
 
+  async function doSaveDraft() {
+    setSavingDraft(true)
+    try {
+      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}/draft`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          reviewer,
+          notes,
+          overrides,
+          qty_edits:        qtyEdits,
+          price_edits:      priceEdits,
+          override_reasons: overrideReasons,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Progress saved — come back anytime to continue this batch')
+      } else {
+        toast.error('Failed to save progress')
+      }
+    } catch (err) {
+      toast.error('Error saving progress')
+    } finally {
+      setSavingDraft(false)
+    }
+  }
+
   async function doReject() {
     setSubmitting(true)
     try {
@@ -261,6 +304,13 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
             <Link href={`/nhia-vetting/${batch.batch_id}`} className="text-xs text-[#137fec] hover:underline">
               Full view ↗
             </Link>
+            {batch.review_draft && (
+              <Badge variant="warning" size="sm" title={
+                batch.review_draft.saved_at ? `Saved ${new Date(batch.review_draft.saved_at).toLocaleString()}` : undefined
+              }>
+                In progress
+              </Badge>
+            )}
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
             {batch.encounter_date} · by {batch.created_by} · {batch.total_rows} rows
@@ -568,14 +618,29 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                     : 'Accept — Store to MongoDB'}
                 </Button>
                 <Button
+                  variant="outline"
+                  size="md"
+                  onClick={doSaveDraft}
+                  loading={savingDraft}
+                  disabled={submitting}
+                >
+                  Save Progress
+                </Button>
+                <Button
                   variant="danger"
                   size="md"
                   onClick={doReject}
-                  disabled={submitting}
+                  disabled={submitting || savingDraft}
                 >
                   Reject
                 </Button>
               </div>
+              {draft?.saved_at && (
+                <p className="text-[11px] text-slate-400">
+                  Draft last saved {new Date(draft.saved_at).toLocaleString()}
+                  {draft.saved_by ? ` by ${draft.saved_by}` : ''}
+                </p>
+              )}
             </div>
           </div>
         </>
