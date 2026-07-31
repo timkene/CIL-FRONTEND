@@ -21,6 +21,7 @@ interface BatchRow {
 }
 
 interface LineItem {
+  request_id:          string
   procedure_code:     string
   procedure_name:     string
   diagnosis_code:     string
@@ -74,6 +75,7 @@ interface Batch {
 }
 
 interface RowOverride {
+  request_id:        string
   enrollee_id:       string
   procedure_code:    string
   override_decision: 'APPROVE' | 'DENY'
@@ -89,8 +91,13 @@ function fmtMoney(n: number | null | undefined) {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function rowKey(enrolleeId: string, procedureCode: string) {
-  return `${enrolleeId}|${procedureCode}`
+// The row's unique identity is its request_id — enrollee_id + procedure_code
+// alone collide whenever an enrollee has multiple line items for the same
+// procedure (e.g. a multi-session physiotherapy course), which previously
+// caused overriding ONE such row to silently override every row sharing
+// that enrollee+procedure.
+function rowKey(item: LineItem) {
+  return item.request_id
 }
 
 // ── BatchCard ─────────────────────────────────────────────────────────────────
@@ -141,12 +148,12 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
 
   // Effective decision for a row: override if present, else AI's decision
   function effectiveDecision(eid: string, item: LineItem): 'APPROVE' | 'DENY' {
-    const k = rowKey(eid, item.procedure_code)
+    const k = rowKey(item)
     return (overrides[k] ?? item.decision) as 'APPROVE' | 'DENY'
   }
 
   function toggleRow(eid: string, item: LineItem) {
-    const k    = rowKey(eid, item.procedure_code)
+    const k    = rowKey(item)
     const curr = effectiveDecision(eid, item)
     const next: 'APPROVE' | 'DENY' = curr === 'APPROVE' ? 'DENY' : 'APPROVE'
     // If next equals the original AI decision, remove override (no longer changed)
@@ -177,7 +184,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
   ])
 
   function effectiveTotal(eid: string, item: LineItem): number | null {
-    const k    = rowKey(eid, item.procedure_code)
+    const k    = rowKey(item)
     const qty   = qtyEdits[k]   ?? item.adjusted_quantity ?? item.stated_quantity ?? 1
     const price = priceEdits[k] ?? item.adjusted_price    ?? item.stated_price
     return price != null ? Math.round(price * qty * 100) / 100 : item.total_amount
@@ -189,7 +196,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
       .filter(({ eid, item }) =>
         item.drop_reason === 'Manual entry' && effectiveDecision(eid, item) === 'DENY'
       )
-      .map(({ eid, item }) => rowKey(eid, item.procedure_code))
+      .map(({ item }) => rowKey(item))
 
     // Any genuine decision override (Override → APPROVE or Override → DENY)
     // requires a reason so every override is auditable.
@@ -206,13 +213,12 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
     try {
       const allSubmitKeys = new Set([...allEditedKeys, ...manualDenyKeys])
       const rowOverrides: RowOverride[] = Array.from(allSubmitKeys).map(key => {
-        const [enrollee_id, procedure_code] = key.split('|')
+        const found = allItems.find(x => rowKey(x.item) === key)
         const override: RowOverride = {
-          enrollee_id,
-          procedure_code,
-          override_decision: overrides[key] ?? (
-            allItems.find(x => rowKey(x.eid, x.item.procedure_code) === key)?.item.decision as 'APPROVE' | 'DENY'
-          ) ?? 'APPROVE',
+          request_id:      key,
+          enrollee_id:     found?.eid ?? '',
+          procedure_code:  found?.item.procedure_code ?? '',
+          override_decision: overrides[key] ?? (found?.item.decision as 'APPROVE' | 'DENY') ?? 'APPROVE',
         }
         if (qtyEdits[key]   != null) override.adjusted_quantity = qtyEdits[key]
         if (priceEdits[key] != null) override.adjusted_price    = priceEdits[key]
@@ -391,7 +397,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                       {(result.line_items ?? []).map((item, li) => {
                         const eid          = result.enrollee_id ?? ''
                         const lineKey      = `${gi}-${li}`
-                        const k            = rowKey(eid, item.procedure_code)
+                        const k            = rowKey(item)
                         const effective    = effectiveDecision(eid, item)
                         const isOverridden = overrides[k] !== undefined
                         const hasQtyEdit   = qtyEdits[k]   != null
