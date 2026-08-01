@@ -53,6 +53,7 @@ export type OrderStatus =
   | 'pending_review'
   | 'rejected'
   | 'bidding'
+  | 'clearline_price_review'
   | 'awaiting_fulfillment'
   | 'accepted'
   | 'awaiting_confirmation'

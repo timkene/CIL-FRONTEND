@@ -62,6 +62,12 @@ export const rejectPharmacyOrder = (id: string) =>
 export const staffConfirmPharmacyReceipt = (id: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/staff-confirm`, { method: 'POST' })
 
+export const clearlineApprovePharmacyOrder = (id: string, adjustedPrice?: number) =>
+  pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/clearline-approve`, {
+    method: 'POST',
+    body: JSON.stringify(adjustedPrice !== undefined ? { adjusted_price: adjustedPrice } : {}),
+  })
+
 export const updatePharmacyOrder = (
   id: string,
   payload: { enrollee?: import('./pharmacy-types').Enrollee; provider?: import('./pharmacy-types').Provider; medications?: import('./pharmacy-types').Medication[] }
