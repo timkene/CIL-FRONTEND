@@ -59,9 +59,9 @@ export default function AftercarePage() {
       const [statusResult, trackerResult, feedbackResult, outreachResult, ratingsResult] = await Promise.all([
         getAftercareStatus(),
         getAftercareTracker(selectedDate),
-        getAftercareFeedback(),
-        getAftercareOutreach(),
-        getAftercareProviderRatings(),
+        getAftercareFeedback(selectedDate, selectedDate),
+        getAftercareOutreach(selectedDate),
+        getAftercareProviderRatings(selectedDate, selectedDate),
       ])
       setStatus(statusResult)
       setTracker(trackerResult)
