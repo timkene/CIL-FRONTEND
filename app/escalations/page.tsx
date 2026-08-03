@@ -74,6 +74,7 @@ export default function EscalationsPage() {
   const [acting, setActing] = useState<string | null>(null)
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [expandedComplaints, setExpandedComplaints] = useState<Set<string>>(new Set())
   const loadGenRef = useRef(0)
 
   const load = useCallback(async () => {
@@ -269,7 +270,23 @@ export default function EscalationsPage() {
                     </td>
                     <td className="px-4 py-3 max-w-xs">
                       {esc.complaint ? (
-                        <p className="text-sm text-slate-700 line-clamp-2">{esc.complaint}</p>
+                        <div>
+                          <p className={`text-sm text-slate-700 ${expandedComplaints.has(esc.id) ? '' : 'line-clamp-2'}`}>
+                            {esc.complaint}
+                          </p>
+                          {esc.complaint.length > 80 && (
+                            <button
+                              onClick={() => setExpandedComplaints(prev => {
+                                const next = new Set(prev)
+                                next.has(esc.id) ? next.delete(esc.id) : next.add(esc.id)
+                                return next
+                              })}
+                              className="text-xs text-[#137fec] hover:underline mt-0.5"
+                            >
+                              {expandedComplaints.has(esc.id) ? 'Show less' : 'Show more'}
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-slate-300 text-sm">—</span>
                       )}
