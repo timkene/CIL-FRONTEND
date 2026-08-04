@@ -167,3 +167,45 @@ export const runSync = (userName?: string) =>
     { method: 'POST' },
     userName
   )
+
+// ── Pharmacy PA ────────────────────────────────────────────────────────────────
+
+export interface PharmacyMedicationAmount {
+  procedure_code: string
+  amount: number
+}
+
+export interface PharmacyPARecord {
+  order_id: string
+  enrollee_id: string
+  pa_number: string
+  generated_by: string
+  generated_at: string
+  fulfillment_type: string
+  medication_amounts: Array<{
+    procedure_code: string
+    procedure_desc: string
+    diagnosis_code: string
+    diagnosis_desc: string
+    quantity: number
+    amount: number
+  }>
+}
+
+export const generatePharmacyPA = (
+  orderId: string,
+  medicationAmounts: PharmacyMedicationAmount[],
+  userName?: string,
+) =>
+  klaireFetch<{ status: string; pa_number: string; order_id: string; enrollee_id: string }>(
+    `/team/api/pharmacy/orders/${orderId}/generate-pa`,
+    { method: 'POST', body: JSON.stringify({ medication_amounts: medicationAmounts }) },
+    userName,
+  )
+
+export const getPharmacyPARecords = (orderId?: string) => {
+  const qs = orderId ? `?order_id=${encodeURIComponent(orderId)}` : ''
+  return klaireFetch<{ pa_records: PharmacyPARecord[]; total: number }>(
+    `/team/api/pharmacy/pa-records${qs}`,
+  )
+}

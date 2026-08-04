@@ -6,7 +6,9 @@ import { BiddingTable } from '@/components/pharmacy/BiddingTable'
 import { CountdownTimer } from '@/components/pharmacy/CountdownTimer'
 import { StatusChip } from '@/components/pharmacy/StatusChip'
 import { getPharmacyOrder, closePharmacyBidding, staffConfirmPharmacyReceipt, clearlineApprovePharmacyOrder, PharmacyApiError } from '@/lib/pharmacy-api'
+import { generatePharmacyPA, getPharmacyPARecords, KlaireApiError } from '@/lib/klaire-api'
 import type { PharmacyOrder, Bid, OrderStatus } from '@/lib/pharmacy-types'
+import type { PharmacyPARecord, PharmacyMedicationAmount } from '@/lib/klaire-api'
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   pending_review: 'Pending Review',
@@ -41,13 +43,21 @@ export default function PharmacyOrderPage() {
   const [confirmingReceipt, setConfirmingReceipt] = useState(false)
   const [approvingPrice, setApprovingPrice] = useState(false)
   const [adjustedPrice, setAdjustedPrice] = useState<string>('')
+  const [paRecords, setPaRecords] = useState<PharmacyPARecord[]>([])
+  const [showPaModal, setShowPaModal] = useState(false)
+  const [generatingPa, setGeneratingPa] = useState(false)
+  const [medAmounts, setMedAmounts] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     try {
-      const data = await getPharmacyOrder(id)
+      const [data, paData] = await Promise.all([
+        getPharmacyOrder(id),
+        getPharmacyPARecords(id).catch(() => ({ pa_records: [], total: 0 })),
+      ])
       setOrder(data)
       setBids(data.bids ?? [])
       setStatus(data.status)
+      setPaRecords(paData.pa_records)
     } catch (err) {
       setToast(err instanceof PharmacyApiError ? err.message : 'Failed to load order')
     } finally {
@@ -409,9 +419,162 @@ export default function PharmacyOrderPage() {
 
       {/* STATE 5: Completed */}
       {status === 'completed' && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-5">
-          <p className="text-emerald-700 font-bold text-lg mb-1">Order Completed</p>
-          <p className="text-sm text-slate-500">The enrollee confirmed they received their medication.</p>
+        <div className="space-y-4">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-5 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-emerald-700 font-bold text-lg mb-1">Order Completed</p>
+              <p className="text-sm text-slate-500">The enrollee confirmed they received their medication.</p>
+            </div>
+            {paRecords.length === 0 && (
+              <button
+                onClick={() => {
+                  const initial: Record<string, string> = {}
+                  order.medications.forEach(m => {
+                    if (m.procedureCode) initial[m.procedureCode] = ''
+                  })
+                  setMedAmounts(initial)
+                  setShowPaModal(true)
+                }}
+                className="shrink-0 px-4 py-2 bg-[#137fec] hover:bg-[#137fec]/90 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                Generate PA
+              </button>
+            )}
+          </div>
+
+          {/* PA Records */}
+          {paRecords.length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-slate-700 uppercase tracking-wider">PA Generated</p>
+                <button
+                  onClick={() => {
+                    const initial: Record<string, string> = {}
+                    order.medications.forEach(m => {
+                      if (m.procedureCode) initial[m.procedureCode] = ''
+                    })
+                    setMedAmounts(initial)
+                    setShowPaModal(true)
+                  }}
+                  className="text-xs text-[#137fec] hover:underline font-semibold"
+                >
+                  Generate another
+                </button>
+              </div>
+              {paRecords.map(rec => (
+                <div key={rec.pa_number} className="border border-emerald-200 bg-emerald-50 rounded-lg p-4 space-y-2">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-emerald-800 font-bold text-base font-mono">{rec.pa_number}</span>
+                    <span className="text-xs text-slate-500">by {rec.generated_by}</span>
+                    <span className="text-xs text-slate-400">{new Date(rec.generated_at).toLocaleString()}</span>
+                    {rec.fulfillment_type === 'delivered' && (
+                      <span className="text-[10px] font-bold bg-[#137fec]/10 text-[#137fec] px-2 py-0.5 rounded uppercase tracking-wide">Delivery incl.</span>
+                    )}
+                  </div>
+                  {rec.medication_amounts.length > 0 && (
+                    <div className="text-xs text-slate-600 space-y-0.5">
+                      {rec.medication_amounts.map((m, i) => (
+                        <div key={i} className="flex gap-3">
+                          <span className="font-mono text-[#137fec]">{m.procedure_code}</span>
+                          <span className="flex-1 truncate">{m.procedure_desc || m.diagnosis_desc}</span>
+                          <span className="font-semibold shrink-0">₦{m.amount.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PA Generation Modal */}
+      {showPaModal && order && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">Generate PA</h3>
+                <button
+                  onClick={() => setShowPaModal(false)}
+                  className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-sm text-slate-500">
+                Enter the approved amount for each medication/procedure. These will appear as
+                <span className="font-semibold"> AmountRequested</span> and <span className="font-semibold">AmountGranted</span> in the PA.
+                {order.fulfillmentType === 'delivered' && (
+                  <span className="block mt-1 text-[#137fec]">
+                    Delivery fee of ₦{order.deliveryFee?.toLocaleString() ?? '—'} will be added as PRE11.
+                  </span>
+                )}
+              </p>
+
+              <div className="space-y-3">
+                {order.medications.map(med => (
+                  <div key={med.procedureCode ?? med.name} className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      {med.procedureCode && (
+                        <span className="font-mono text-xs text-emerald-700 mr-1">{med.procedureCode}</span>
+                      )}
+                      <span className="text-sm text-slate-800 truncate">{med.name}</span>
+                      <span className="text-xs text-slate-400 ml-1">× {med.quantity}</span>
+                    </div>
+                    <div className="shrink-0 w-36">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="₦ Amount"
+                        value={medAmounts[med.procedureCode ?? ''] ?? ''}
+                        onChange={e => setMedAmounts(prev => ({ ...prev, [med.procedureCode ?? '']: e.target.value }))}
+                        className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#137fec]/30 focus:border-[#137fec]"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+                <button
+                  onClick={() => setShowPaModal(false)}
+                  className="px-4 py-2 text-sm font-semibold text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={generatingPa}
+                  onClick={async () => {
+                    const amounts: PharmacyMedicationAmount[] = Object.entries(medAmounts)
+                      .filter(([code]) => code)
+                      .map(([procedure_code, amt]) => ({
+                        procedure_code,
+                        amount: parseFloat(amt) || 0,
+                      }))
+                    setGeneratingPa(true)
+                    try {
+                      const result = await generatePharmacyPA(id, amounts)
+                      setShowPaModal(false)
+                      setToast(`PA generated: ${result.pa_number}`)
+                      await load()
+                    } catch (err) {
+                      const msg = err instanceof KlaireApiError ? err.message : 'Failed to generate PA'
+                      setToast(msg)
+                    } finally {
+                      setGeneratingPa(false)
+                    }
+                  }}
+                  className="px-4 py-2 bg-[#137fec] hover:bg-[#137fec]/90 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {generatingPa ? 'Generating…' : 'Generate PA'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
