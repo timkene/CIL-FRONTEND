@@ -88,10 +88,44 @@ const nhiaSearch = (path: string) => async (q: string): Promise<SearchResult[]> 
   }
 }
 
-export const searchPharmacyMembers    = nhiaSearch('/api/search/members')
-export const searchPharmacyProviders  = nhiaSearch('/api/search/providers')
-export const searchPharmacyProcedures = nhiaSearch('/api/search/procedures')
-export const searchPharmacyDiagnoses  = nhiaSearch('/api/search/diagnoses')
+export const searchPharmacyMembers   = nhiaSearch('/api/search/members')
+export const searchPharmacyProviders = nhiaSearch('/api/search/providers')
+
+const MEDICLOUD_BASE = 'https://api.clearlinehmo.com'
+
+export const searchPharmacyProcedures = async (q: string): Promise<SearchResult[]> => {
+  if (!q.trim()) return []
+  try {
+    const res = await fetch(
+      `${MEDICLOUD_BASE}/procedures?search=${encodeURIComponent(q)}&limit=20`
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.results ?? data as unknown[]).map((p: Record<string, string>) => ({
+      code:  p.procedure_code ?? '',
+      label: p.procedure_name ?? '',
+    }))
+  } catch {
+    return []
+  }
+}
+
+export const searchPharmacyDiagnoses = async (q: string): Promise<SearchResult[]> => {
+  if (!q.trim()) return []
+  try {
+    const res = await fetch(
+      `${MEDICLOUD_BASE}/diagnoses?search=${encodeURIComponent(q)}&limit=20`
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.results ?? data as unknown[]).map((d: Record<string, string>) => ({
+      code:  d.diagnosis_code ?? '',
+      label: d.diagnosis_name ?? '',
+    }))
+  } catch {
+    return []
+  }
+}
 
 const NHIA_BASE = 'https://clearline-nhia-api.onrender.com'
 
