@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '@/components/AppShell'
 import {
   getAftercareStatus,
@@ -39,42 +39,76 @@ function scoreChip(v: number | undefined | null, max: number) {
   return <span className={`font-semibold text-xs ${cls}`}>{v}/{max}</span>
 }
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function daysAgoStr(n: number) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d.toISOString().slice(0, 10)
+}
+
+const QUICK_RANGES = [
+  { label: 'Today',    from: () => todayStr(),     to: () => todayStr() },
+  { label: 'Last 7d',  from: () => daysAgoStr(6),  to: () => todayStr() },
+  { label: 'Last 30d', from: () => daysAgoStr(29), to: () => todayStr() },
+]
+
 export default function AftercarePage() {
   const { user } = useAuth()
   const userName = user ? `${user.first_name} ${user.last_name}` : undefined
 
-  const [status, setStatus]           = useState<MonitorStatus | null>(null)
-  const [stats, setStats]             = useState<AftercareStats | null>(null)
-  const [tracker, setTracker]         = useState<{ total: number; responded: number; pending: number; records: AftercareTrackerRecord[] } | null>(null)
-  const [outreach, setOutreach]       = useState<AftercareOutreachRecord[]>([])
-  const [feedback, setFeedback]       = useState<AftercareRecord[]>([])
+  const [status, setStatus]         = useState<MonitorStatus | null>(null)
+  const [stats, setStats]           = useState<AftercareStats | null>(null)
+  // Single-day tracker (only used when fromDate === toDate)
+  const [tracker, setTracker]       = useState<{ total: number; responded: number; pending: number; records: AftercareTrackerRecord[] } | null>(null)
+  // Full outreach list (used for range view)
+  const [outreach, setOutreach]     = useState<AftercareOutreachRecord[]>([])
+  const [feedback, setFeedback]     = useState<AftercareRecord[]>([])
   const [providerRatings, setProviderRatings] = useState<{ hospital: string; avg_rating: number | null; count: number }[]>([])
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10))
-  const [loading, setLoading]     = useState(true)
-  const [acting, setActing]       = useState(false)
-  const [toast, setToast]         = useState<string | null>(null)
+
+  const [fromDate, setFromDate] = useState<string>(todayStr())
+  const [toDate,   setToDate]   = useState<string>(todayStr())
+
+  const [loading, setLoading] = useState(true)
+  const [acting,  setActing]  = useState(false)
+  const [toast,   setToast]   = useState<string | null>(null)
+
+  const isSingleDay = fromDate === toDate
 
   const load = useCallback(async () => {
     try {
-      const [statusResult, trackerResult, feedbackResult, outreachResult, ratingsResult] = await Promise.all([
+      const calls: Promise<unknown>[] = [
         getAftercareStatus(),
-        getAftercareTracker(selectedDate),
-        getAftercareFeedback(selectedDate, selectedDate),
-        getAftercareOutreach(selectedDate),
-        getAftercareProviderRatings(selectedDate, selectedDate),
-      ])
+        getAftercareFeedback(fromDate, toDate),
+        getAftercareOutreach(fromDate),
+        getAftercareProviderRatings(fromDate, toDate),
+      ]
+      // Tracker endpoint only makes sense for a single day
+      if (isSingleDay) calls.push(getAftercareTracker(fromDate))
+
+      const [statusResult, feedbackResult, outreachResult, ratingsResult, trackerResult] =
+        await Promise.all(calls) as [
+          MonitorStatus,
+          { feedback: AftercareRecord[]; stats: AftercareStats },
+          { outreach: AftercareOutreachRecord[] },
+          { ratings: { hospital: string; avg_rating: number | null; count: number }[] },
+          { total: number; responded: number; pending: number; records: AftercareTrackerRecord[] } | undefined,
+        ]
+
       setStatus(statusResult)
-      setTracker(trackerResult)
       setFeedback(feedbackResult.feedback)
       setStats(feedbackResult.stats)
       setOutreach(outreachResult.outreach)
       setProviderRatings(ratingsResult.ratings)
+      setTracker(trackerResult ?? null)
     } catch (err) {
       setToast(err instanceof KlaireApiError ? err.message : 'Failed to load aftercare data')
     } finally {
       setLoading(false)
     }
-  }, [selectedDate])
+  }, [fromDate, toDate, isSingleDay])
 
   useEffect(() => { setLoading(true); load() }, [load])
   useEffect(() => {
@@ -97,13 +131,49 @@ export default function AftercarePage() {
     }
   }
 
-  // Daily sent summary grouped by day
+  // For range view: filter outreach to the selected window, then join with feedback
+  const rangeRows = useMemo(() => {
+    if (isSingleDay) return []
+    const endBound = toDate + 'T23:59:59'
+    const filtered = outreach.filter(r => {
+      const ca = r.contacted_at ?? ''
+      return ca >= fromDate && ca <= endBound
+    })
+    // Build feedback map by enrollee_id (latest response wins)
+    const fbMap: Record<string, AftercareRecord> = {}
+    feedback.forEach(f => { fbMap[f.enrollee_id] = f })
+
+    return filtered.map(r => {
+      const fb = fbMap[r.enrollee_id]
+      const interaction: 'completed' | 'escalated' | 'pending' = fb
+        ? (fb.escalated ? 'escalated' : 'completed')
+        : 'pending'
+      return { ...r, interaction, feedback: fb ?? null }
+    })
+  }, [isSingleDay, outreach, feedback, fromDate, toDate])
+
+  const rangeResponded = rangeRows.filter(r => r.interaction !== 'pending').length
+  const rangePending   = rangeRows.filter(r => r.interaction === 'pending').length
+
+  // Daily sent summary (used in Messages Sent section)
   const byDay: Record<string, number> = {}
   outreach.forEach(r => {
     const day = r.contacted_at ? r.contacted_at.slice(0, 10) : 'unknown'
     byDay[day] = (byDay[day] ?? 0) + 1
   })
   const sentDays = Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0]))
+
+  const applyQuick = (from: string, to: string) => {
+    setFromDate(from)
+    setToDate(to)
+    setLoading(true)
+  }
+
+  // Decide which rows to render in the tracker table
+  const trackerRows  = isSingleDay ? (tracker?.records ?? []) : rangeRows
+  const trackerTotal = isSingleDay ? (tracker?.total ?? 0)    : rangeRows.length
+  const trackerResp  = isSingleDay ? (tracker?.responded ?? 0) : rangeResponded
+  const trackerPend  = isSingleDay ? (tracker?.pending ?? 0)   : rangePending
 
   return (
     <div className="p-8 space-y-6">
@@ -142,6 +212,49 @@ export default function AftercarePage() {
             {acting ? 'Working…' : status?.enabled ? 'Stop' : 'Start'}
           </button>
         </div>
+      </div>
+
+      {/* Date range filter */}
+      <div className="bg-white border border-slate-200 rounded-lg p-4 flex items-center gap-4 flex-wrap">
+        <span className="text-sm font-semibold text-slate-600 shrink-0">Date range</span>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={fromDate}
+            max={toDate}
+            onChange={e => { setFromDate(e.target.value); setLoading(true) }}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#137fec]"
+          />
+          <span className="text-slate-400 text-sm">to</span>
+          <input
+            type="date"
+            value={toDate}
+            min={fromDate}
+            max={todayStr()}
+            onChange={e => { setToDate(e.target.value); setLoading(true) }}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#137fec]"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          {QUICK_RANGES.map(({ label, from, to }) => {
+            const f = from(), t = to()
+            const active = fromDate === f && toDate === t
+            return (
+              <button
+                key={label}
+                onClick={() => applyQuick(f, t)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${active ? 'bg-[#137fec] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+        {!isSingleDay && (
+          <span className="text-xs text-slate-400 ml-auto">
+            {fromDate} → {toDate}
+          </span>
+        )}
       </div>
 
       {/* Survey stats */}
@@ -183,7 +296,9 @@ export default function AftercarePage() {
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200">
             <h2 className="text-lg font-semibold text-slate-900">Provider Ratings</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Average hospital rating per facility (all time)</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Average hospital rating for selected period
+            </p>
           </div>
           <div className="divide-y divide-slate-100">
             {providerRatings.map((r) => {
@@ -213,29 +328,23 @@ export default function AftercarePage() {
         </div>
       )}
 
-      {/* Daily tracker */}
+      {/* Enrollee tracker */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Enrollee Tracker</h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              {tracker
-                ? `${tracker.total} sent · ${tracker.responded} responded · ${tracker.pending} no reply`
-                : 'All enrollees contacted on the selected day'}
+              {trackerTotal > 0
+                ? `${trackerTotal} sent · ${trackerResp} responded · ${trackerPend} no reply`
+                : isSingleDay ? 'All enrollees contacted on selected day' : 'All enrollees contacted in selected period'}
             </p>
           </div>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={e => { setSelectedDate(e.target.value); setLoading(true) }}
-            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#137fec]"
-          />
         </div>
 
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-400">Loading…</div>
-        ) : !tracker || tracker.records.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-400">No aftercare messages sent on this date.</div>
+        ) : trackerRows.length === 0 ? (
+          <div className="p-8 text-center text-sm text-slate-400">No aftercare messages sent in this period.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -247,63 +356,75 @@ export default function AftercarePage() {
                 </tr>
               </thead>
               <tbody>
-                {tracker.records.map((row, idx) => (
-                  <tr key={`${row.enrollee_id}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-semibold text-slate-800 font-mono">{row.enrollee_id}</p>
-                      {row.phone && (
-                        <a href={`tel:+${row.phone}`} className="text-xs text-[#137fec] hover:underline font-mono">
-                          +{row.phone}
-                        </a>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600 max-w-[160px] truncate">
-                      {row.providername || row.provider_name || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-400 whitespace-nowrap">
-                      {row.contacted_at ? new Date(row.contacted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${INTERACTION_STYLES[row.interaction]}`}>
-                        {INTERACTION_LABEL[row.interaction]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.feedback ? (
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="text-slate-400">CSAT</span>{scoreChip(row.feedback.csat, 5)}
-                            <span className="text-slate-300">·</span>
-                            <span className="text-slate-400">NPS</span>{scoreChip(row.feedback.nps, 10)}
+                {trackerRows.map((row, idx) => {
+                  // trackerRows may be AftercareTrackerRecord (single day) or our rangeRow (multi-day)
+                  const rowAny = row as AftercareTrackerRecord & { feedback: AftercareRecord | null }
+                  const fb = rowAny.feedback
+                  const escalation = (row as AftercareTrackerRecord).escalation
+                  return (
+                    <tr key={`${row.enrollee_id}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-semibold text-slate-800 font-mono">{row.enrollee_id}</p>
+                        {row.phone && (
+                          <a href={`tel:+${row.phone}`} className="text-xs text-[#137fec] hover:underline font-mono">
+                            +{row.phone}
+                          </a>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600 max-w-[160px] truncate">
+                        {row.providername || (row as AftercareTrackerRecord).provider_name || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-400 whitespace-nowrap">
+                        {row.contacted_at
+                          ? new Date(row.contacted_at).toLocaleDateString([], {
+                              month: 'short', day: 'numeric',
+                              ...(isSingleDay ? {} : { year: '2-digit' }),
+                            }) + ' ' +
+                            new Date(row.contacted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${INTERACTION_STYLES[row.interaction]}`}>
+                          {INTERACTION_LABEL[row.interaction]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {fb ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-slate-400">CSAT</span>{scoreChip(fb.csat, 5)}
+                              <span className="text-slate-300">·</span>
+                              <span className="text-slate-400">NPS</span>{scoreChip(fb.nps, 10)}
+                            </div>
+                            {fb.source === 'form' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-[#137fec] font-semibold">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#137fec]" />
+                                via link
+                              </span>
+                            )}
                           </div>
-                          {row.feedback.source === 'form' && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-[#137fec] font-semibold">
-                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#137fec]" />
-                              via link
-                            </span>
-                          )}
-                        </div>
-                      ) : <span className="text-slate-300 text-xs">—</span>}
-                    </td>
-                    <td className="px-4 py-3 max-w-[200px]">
-                      {row.feedback?.comments
-                        ? <p className="text-xs text-slate-700 line-clamp-3">{row.feedback.comments}</p>
-                        : <span className="text-slate-300 text-xs">—</span>}
-                    </td>
-                    <td className="px-4 py-3 max-w-xs">
-                      {row.escalation?.complaint
-                        ? <p className="text-xs text-amber-700 line-clamp-2">{row.escalation.complaint}</p>
-                        : <span className="text-slate-300 text-xs">—</span>}
-                    </td>
-                  </tr>
-                ))}
+                        ) : <span className="text-slate-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-4 py-3 max-w-[200px]">
+                        {fb?.comments
+                          ? <p className="text-xs text-slate-700 line-clamp-3">{fb.comments}</p>
+                          : <span className="text-slate-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-4 py-3 max-w-xs">
+                        {escalation?.complaint
+                          ? <p className="text-xs text-amber-700 line-clamp-2">{escalation.complaint}</p>
+                          : <span className="text-slate-300 text-xs">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* Survey Notes — all written comments from enrollees */}
+      {/* Survey Notes */}
       {(() => {
         const withNotes = feedback.filter(r => r.comments)
         if (withNotes.length === 0) return null
@@ -338,14 +459,14 @@ export default function AftercarePage() {
         )
       })()}
 
-      {/* Messages sent — daily count */}
+      {/* Messages Sent — daily breakdown */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Messages Sent</h2>
             <p className="text-xs text-slate-400 mt-0.5">Daily count of aftercare surveys dispatched</p>
           </div>
-          {!loading && <span className="text-xs text-slate-400">{outreach.length} total</span>}
+          {!loading && <span className="text-xs text-slate-400">{outreach.length} total in period</span>}
         </div>
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-400">Loading…</div>
@@ -356,13 +477,13 @@ export default function AftercarePage() {
             {sentDays.map(([day, count]) => (
               <button
                 key={day}
-                onClick={() => setSelectedDate(day)}
-                className={`w-full px-6 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors text-left ${selectedDate === day ? 'bg-[#137fec]/5' : ''}`}
+                onClick={() => applyQuick(day, day)}
+                className={`w-full px-6 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors text-left ${fromDate === day && toDate === day ? 'bg-[#137fec]/5' : ''}`}
               >
-                <span className={`text-sm font-medium ${selectedDate === day ? 'text-[#137fec]' : 'text-slate-700'}`}>
+                <span className={`text-sm font-medium ${fromDate === day && toDate === day ? 'text-[#137fec]' : 'text-slate-700'}`}>
                   {new Date(day + 'T12:00:00').toLocaleDateString([], { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
                 </span>
-                <span className={`text-sm font-semibold px-3 py-0.5 rounded-full ${selectedDate === day ? 'bg-[#137fec] text-white' : 'bg-[#137fec]/10 text-[#137fec]'}`}>
+                <span className={`text-sm font-semibold px-3 py-0.5 rounded-full ${fromDate === day && toDate === day ? 'bg-[#137fec] text-white' : 'bg-[#137fec]/10 text-[#137fec]'}`}>
                   {count} sent
                 </span>
               </button>
