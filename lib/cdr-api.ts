@@ -80,12 +80,24 @@ export const retrySupplyPa = (supplyId: string) =>
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
 
-export const listInventory = () =>
-  cdrFetch<{ data: CdrInventoryItem[] }>('/team/api/cdr/inventory')
+export const listInventory = (q = '') =>
+  cdrFetch<{ data: CdrInventoryItem[] }>(
+    `/team/api/cdr/inventory${q ? `?q=${encodeURIComponent(q)}` : ''}`
+  )
+
+export const createInventoryItem = (body: {
+  drug_code: string
+  drug_name: string
+  unit_price: number
+}) =>
+  cdrFetch<{ ok: boolean; drug_code: string }>('/team/api/cdr/inventory', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 
 export const updateInventoryItem = (
   drugCode: string,
-  body: { quantity_on_hand?: number; low_stock_threshold?: number; unit_price?: number }
+  body: { drug_name?: string; unit_price?: number }
 ) =>
   cdrFetch<{ ok: boolean }>(
     `/team/api/cdr/inventory/${encodeURIComponent(drugCode)}`,

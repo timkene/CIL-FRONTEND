@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   listEnrollees, createEnrollee, updateEnrollee,
   listSupplies, confirmSupply, cancelSupply, retrySupplyPa,
-  listInventory, updateInventoryItem, restockInventory,
+  listInventory, createInventoryItem, updateInventoryItem,
   getCdrStats, triggerCdrNow,
   CdrApiError,
 } from '@/lib/cdr-api'
@@ -636,50 +636,133 @@ function SuppliesTab() {
   )
 }
 
+// ── Add Drug modal ─────────────────────────────────────────────────────────────
+
+function AddDrugModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ drug_code: '', drug_name: '', unit_price: '' })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const submit = async () => {
+    if (!form.drug_code.trim() || !form.drug_name.trim()) {
+      setErr('Drug code and name are required')
+      return
+    }
+    const price = parseFloat(form.unit_price)
+    if (isNaN(price) || price < 0) {
+      setErr('Enter a valid price')
+      return
+    }
+    setSaving(true)
+    try {
+      await createInventoryItem({ drug_code: form.drug_code.trim(), drug_name: form.drug_name.trim(), unit_price: price })
+      onSaved()
+    } catch (e) {
+      setErr(e instanceof CdrApiError ? e.message : 'Failed to add drug')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <h2 className="font-semibold text-slate-800">Add New Drug</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          {err && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">{err}</p>}
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Drug Code</label>
+            <input
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono"
+              placeholder="e.g. CDR0161"
+              value={form.drug_code}
+              onChange={e => setForm(p => ({ ...p, drug_code: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Drug Name</label>
+            <input
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="e.g. METFORMIN 500MG"
+              value={form.drug_name}
+              onChange={e => setForm(p => ({ ...p, drug_name: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Price per Unit (₦)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="0.00"
+              value={form.unit_price}
+              onChange={e => setForm(p => ({ ...p, unit_price: e.target.value }))}
+            />
+          </div>
+          <p className="text-xs text-slate-400">Stock will start at 0. Upload correct stock quantity via backend.</p>
+        </div>
+        <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+          <button onClick={submit} disabled={saving}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Adding…' : 'Add Drug'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Inventory tab ──────────────────────────────────────────────────────────────
 
 function InventoryTab() {
   const [items, setItems] = useState<CdrInventoryItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
-  const [editVals, setEditVals] = useState<{ qty: string; threshold: string; price: string }>({
-    qty: '', threshold: '', price: '',
-  })
+  const [editVals, setEditVals] = useState<{ name: string; price: string }>({ name: '', price: '' })
   const [saving, setSaving] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+
+  // Debounce search 300ms
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await listInventory()
+      const res = await listInventory(debouncedSearch)
       setItems(res.data)
     } catch {
       setToast('Error loading inventory')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [debouncedSearch])
 
   useEffect(() => { load() }, [load])
 
   const startEdit = (item: CdrInventoryItem) => {
     setEditing(item.drug_code)
-    setEditVals({
-      qty:       String(item.quantity_on_hand),
-      threshold: String(item.low_stock_threshold),
-      price:     String(item.unit_price),
-    })
+    setEditVals({ name: item.drug_name, price: String(item.unit_price) })
   }
 
   const saveEdit = async (drugCode: string) => {
     setSaving(true)
     try {
       await updateInventoryItem(drugCode, {
-        quantity_on_hand:    parseInt(editVals.qty),
-        low_stock_threshold: parseInt(editVals.threshold),
-        unit_price:          parseFloat(editVals.price),
+        drug_name:  editVals.name.trim() || undefined,
+        unit_price: parseFloat(editVals.price),
       })
-      setToast('Inventory updated')
+      setToast('Drug updated — price change applies to future orders only')
       setEditing(null)
       load()
     } catch (e) {
@@ -689,56 +772,87 @@ function InventoryTab() {
     }
   }
 
+  const lowCount = items.filter(i => i.quantity_on_hand < i.low_stock_threshold).length
+
   return (
     <div className="space-y-4">
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
+      {showAdd && (
+        <AddDrugModal
+          onClose={() => setShowAdd(false)}
+          onSaved={() => { setShowAdd(false); setToast('Drug added'); load() }}
+        />
+      )}
+
+      <div className="flex items-center gap-3">
+        <input
+          className="border border-slate-300 rounded-lg px-3 py-2 text-sm w-64"
+          placeholder="Search drug name or code…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <span className="text-sm text-slate-500">
+          {items.length} drug{items.length !== 1 ? 's' : ''}
+          {lowCount > 0 && <span className="ml-2 text-red-500 font-medium">· {lowCount} low stock</span>}
+        </span>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="ml-auto px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          + Add Drug
+        </button>
+      </div>
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Drug Code', 'Drug Name', 'On Hand', 'Threshold', 'Unit Price (₦)', 'Updated', 'Actions'].map(h => (
+                {['Code', 'Drug Name', 'Stock', 'Unit Price (₦)', 'Last Updated', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {loading ? <Skeleton rows={6} cols={7} /> : items.map(item => {
+              {loading ? <Skeleton rows={8} cols={6} /> : items.map(item => {
                 const isLow = item.quantity_on_hand < item.low_stock_threshold
                 const isEditing = editing === item.drug_code
                 return (
-                  <tr key={item.drug_code} className="border-t border-slate-100 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono text-xs">{item.drug_code}</td>
-                    <td className="px-4 py-3 font-medium">{item.drug_name}</td>
-                    <td className="px-4 py-3">
+                  <tr key={item.drug_code} className={`border-t border-slate-100 hover:bg-slate-50 ${isLow ? 'bg-red-50/40' : ''}`}>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{item.drug_code}</td>
+                    <td className="px-4 py-3 font-medium">
                       {isEditing ? (
-                        <input type="number" className="w-20 border rounded px-2 py-1 text-xs"
-                          value={editVals.qty}
-                          onChange={e => setEditVals(p => ({ ...p, qty: e.target.value }))} />
-                      ) : (
-                        <span className={isLow ? 'text-red-600 font-semibold' : ''}>{item.quantity_on_hand}</span>
-                      )}
-                      {isLow && !isEditing && <span className="ml-1 text-xs text-red-500">Low</span>}
+                        <input
+                          className="border border-slate-300 rounded px-2 py-1 text-sm w-64"
+                          value={editVals.name}
+                          onChange={e => setEditVals(p => ({ ...p, name: e.target.value }))}
+                        />
+                      ) : item.drug_name}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={isLow ? 'text-red-600 font-semibold' : 'text-slate-700'}>
+                        {item.quantity_on_hand}
+                      </span>
+                      {isLow && <span className="ml-1.5 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">Low</span>}
                     </td>
                     <td className="px-4 py-3">
                       {isEditing ? (
-                        <input type="number" className="w-20 border rounded px-2 py-1 text-xs"
-                          value={editVals.threshold}
-                          onChange={e => setEditVals(p => ({ ...p, threshold: e.target.value }))} />
-                      ) : item.low_stock_threshold}
-                    </td>
-                    <td className="px-4 py-3">
-                      {isEditing ? (
-                        <input type="number" step="0.01" className="w-24 border rounded px-2 py-1 text-xs"
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="border border-slate-300 rounded px-2 py-1 text-sm w-28"
                           value={editVals.price}
-                          onChange={e => setEditVals(p => ({ ...p, price: e.target.value }))} />
-                      ) : `₦${item.unit_price.toFixed(2)}`}
+                          onChange={e => setEditVals(p => ({ ...p, price: e.target.value }))}
+                        />
+                      ) : (
+                        <span>₦{item.unit_price.toFixed(2)}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-400">{fmt(item.updated_at)}</td>
                     <td className="px-4 py-3">
                       {isEditing ? (
-                        <div className="flex gap-2">
+                        <div className="flex gap-3">
                           <button disabled={saving} onClick={() => saveEdit(item.drug_code)}
                             className="text-xs text-green-600 hover:underline disabled:opacity-40">
                             {saving ? '…' : 'Save'}
@@ -757,7 +871,9 @@ function InventoryTab() {
                 )
               })}
               {!loading && items.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No inventory items</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                  {search ? `No drugs matching "${search}"` : 'No inventory items'}
+                </td></tr>
               )}
             </tbody>
           </table>
