@@ -15,6 +15,7 @@ export const ALL_MODULES = [
   'Aftercare',
   'Escalations',
   'Admin',
+  'CDR',
 ] as const
 
 export type ModuleName = typeof ALL_MODULES[number]
@@ -46,6 +47,7 @@ export const MODULE_ROUTES: { href: string; label: string; module: string }[] = 
   { href: '/aftercare',               label: '24hr Aftercare',            module: 'Aftercare' },
   { href: '/escalations',             label: 'Escalations',               module: 'Escalations' },
   { href: '/admin',                   label: 'Admin',                     module: 'Admin' },
+  { href: '/cdr',                     label: 'CDR',                       module: 'CDR' },
 ]
 
 const SESSION_KEY = 'clearline_session'
