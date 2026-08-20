@@ -4,6 +4,11 @@ const MEDICLOUD_BASE = (process.env.MEDICLOUD_API_URL ?? 'https://api.clearlineh
 const MEDICLOUD_API_KEY = process.env.MEDICLOUD_API_KEY ?? ''
 const REQUEST_TIMEOUT_MS = 25_000
 
+// The live aggregation fans out across active contracts. Pro/Enterprise
+// Vercel plans can honor this duration; lower plans should use the eventual
+// cached/composite API before enabling the page in production.
+export const maxDuration = 60
+
 type Group = {
   group_id: number
   group_name: string
