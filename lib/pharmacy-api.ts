@@ -91,7 +91,9 @@ const nhiaSearch = (path: string) => async (q: string): Promise<SearchResult[]> 
 export const searchPharmacyMembers   = nhiaSearch('/api/search/members')
 export const searchPharmacyProviders = nhiaSearch('/api/search/providers')
 
-const MEDICLOUD_BASE = 'https://api.clearlinehmo.com'
+// MediCloud calls go through the Next.js server proxy.  The API key must never
+// be exposed in a NEXT_PUBLIC_* browser bundle.
+const MEDICLOUD_BASE = '/api/medicloud'
 
 export const searchPharmacyProcedures = async (q: string): Promise<SearchResult[]> => {
   if (!q.trim()) return []
