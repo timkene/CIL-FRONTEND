@@ -9,9 +9,11 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui'
 import { useMlrData } from '@/hooks/useMlrData'
 import { MLR_THRESHOLDS } from '@/lib/constants'
+import type { MLRMode } from '@/lib/types'
 
 export default function MLRPage() {
   const { data, loading, error, refetch } = useMlrData()
+  const [mode, setMode] = useState<MLRMode>('actual')
   const [refreshing, setRefreshing] = useState(false)
 
   if (loading) return <LoadingSpinner message="Loading MLR data..." />
@@ -24,32 +26,24 @@ export default function MLRPage() {
   }
 
   const handleExport = () => {
-    const rows = data ?? []
-    const header = ['Client', 'Group ID', 'Contract ID', 'Start', 'End', 'Debit', 'Medical Cost', 'MLR', 'Active Lives', 'Utilized Members', 'Utilization %']
-    const csv = [header, ...rows.map(r => [r.group_name, r.group_id, r.contract_id, r.start_date, r.end_date ?? '', r.total_debit_amount, r.total_actual_medical_cost, r.actual_mlr, r.enrolled_members, r.utilized_members, r.member_utilization_pct])]
-      .map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(','))
-      .join('\n')
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'clearline-mlr.csv'
-    link.click()
-    URL.revokeObjectURL(url)
+    // TODO: Implement CSV export
+    alert('Export functionality - coming soon!')
   }
 
   const rows        = data ?? []
   const lastUpdated = rows.length
-    ? new Date(rows.reduce((max, r) => r.fetched_at > max ? r.fetched_at : max, rows[0].fetched_at))
-        .toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    ? new Date(rows.reduce((max, r) => r.computed_at > max ? r.computed_at : max, rows[0].computed_at))
+        .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
     : '—'
 
   const active  = rows.filter(r => r.total_debit_amount > 0)
+  const mlrKey  = mode === 'actual' ? 'actual_mlr' : 'claims_paid_mlr'
   const total   = active.length || 1
 
   const breakdown = [
-    { label: 'LOSS (> 75%)',       count: active.filter(r => r.actual_mlr > MLR_THRESHOLDS.LOSS).length, color: 'bg-rose-500' },
-    { label: 'WARNING (70–75%)',   count: active.filter(r => r.actual_mlr > MLR_THRESHOLDS.WARNING && r.actual_mlr <= MLR_THRESHOLDS.LOSS).length, color: 'bg-amber-500' },
-    { label: 'PROFITABLE (≤ 70%)', count: active.filter(r => r.actual_mlr <= MLR_THRESHOLDS.WARNING).length, color: 'bg-emerald-500' },
+    { label: 'LOSS (> 75%)',      count: active.filter(r => r[mlrKey] > MLR_THRESHOLDS.LOSS).length,                                      color: 'bg-rose-500'    },
+    { label: 'WARNING (70–75%)',   count: active.filter(r => r[mlrKey] > MLR_THRESHOLDS.WARNING && r[mlrKey] <= MLR_THRESHOLDS.LOSS).length, color: 'bg-amber-500'   },
+    { label: 'PROFITABLE (≤ 70%)', count: active.filter(r => r[mlrKey] <= MLR_THRESHOLDS.WARNING).length,                                  color: 'bg-emerald-500' },
   ]
 
   return (
@@ -85,6 +79,13 @@ export default function MLRPage() {
             >
               Export CSV
             </Button>
+            <Button
+              variant="outline"
+              size="md"
+              leftIcon={<span className="material-symbols-outlined">filter_list</span>}
+            >
+              Filters
+            </Button>
           </div>
           <div className="text-sm text-slate-500">
             {rows.length} total clients • {active.length} active
@@ -92,10 +93,26 @@ export default function MLRPage() {
         </div>
 
         {/* Mode tabs */}
-        <SummaryCards data={rows} />
+        <div className="border-b border-slate-200 flex gap-8">
+          {(['actual', 'paid'] as MLRMode[]).map(m => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`pb-3 border-b-2 text-sm font-bold tracking-wide transition-colors ${
+                mode === m
+                  ? 'border-[#137fec] text-[#137fec]'
+                  : 'border-transparent text-slate-400 hover:text-[#137fec]'
+              }`}
+            >
+              {m === 'actual' ? 'Actual MLR' : 'Claims-Paid MLR'}
+            </button>
+          ))}
+        </div>
+
+        <SummaryCards data={rows} mode={mode} />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          <BinsChart data={rows} />
+          <BinsChart data={rows} mode={mode} />
 
           {/* MLR breakdown panel */}
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
@@ -129,7 +146,7 @@ export default function MLRPage() {
           </div>
         </div>
 
-        <ClientsTable data={rows} />
+        <ClientsTable data={rows} mode={mode} />
       </div>
     </>
   )

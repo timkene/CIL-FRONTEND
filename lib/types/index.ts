@@ -49,25 +49,6 @@ export interface MLRSummary {
   error_message:                  string | null
 }
 
-export interface LiveMLRSummary {
-  id: number
-  group_id: number
-  contract_id: number
-  group_name: string
-  start_date: string
-  end_date: string | null
-  total_debit_amount: number
-  actual_claims_cost: number
-  unclaimed_pa_cost: number
-  total_actual_medical_cost: number
-  actual_mlr: number
-  enrolled_members: number
-  utilized_members: number
-  member_utilization_pct: number
-  fetched_at: string
-  error: string | null
-}
-
 export interface TopProvider {
   rank:          number
   rank_by:       string
