@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import SummaryCards from '@/components/mlr/SummaryCards'
 import BinsChart from '@/components/mlr/BinsChart'
 import ClientsTable from '@/components/mlr/ClientsTable'
@@ -12,8 +12,18 @@ import { MLR_THRESHOLDS } from '@/lib/constants'
 
 export default function MLRPage() {
   const [page, setPage] = useState(0)
-  const { data: result, loading, error, refetch } = useMlrData(page, 50)
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const { data: result, loading, error, refetch } = useMlrData(page, 50, search)
   const [refreshing, setRefreshing] = useState(false)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPage(0)
+      setSearch(searchInput.trim())
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [searchInput])
 
   if (loading) return <LoadingSpinner message="Loading MLR data..." />
   if (error)   return <ErrorCard message={error} onRetry={refetch} />
@@ -131,7 +141,7 @@ export default function MLRPage() {
           </div>
         </div>
 
-        <ClientsTable data={rows} />
+        <ClientsTable data={rows} search={searchInput} onSearchChange={setSearchInput} />
 
         <div className="flex items-center justify-between border-t border-slate-200 pt-4">
           <Button

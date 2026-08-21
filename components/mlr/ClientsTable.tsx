@@ -1,8 +1,11 @@
 'use client'
-import { useState } from 'react'
 import type { LiveMLRSummary } from '@/lib/types'
 
-interface Props { data: LiveMLRSummary[] }
+interface Props {
+  data: LiveMLRSummary[]
+  search: string
+  onSearchChange: (value: string) => void
+}
 
 function fmt(n: number) {
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(2)}M`
@@ -34,12 +37,9 @@ function MarginBadge({ premiumPmpm, actualPmpm }: { premiumPmpm: number; actualP
   )
 }
 
-export default function ClientsTable({ data }: Props) {
-  const [search, setSearch] = useState('')
-
+export default function ClientsTable({ data, search, onSearchChange }: Props) {
   const rows = data
     .filter(d => d.total_debit_amount > 0)
-    .filter(d => d.group_name.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => {
       return b.actual_mlr - a.actual_mlr
     })
@@ -59,7 +59,7 @@ export default function ClientsTable({ data }: Props) {
             className="pl-9 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-[#137fec] w-full outline-none"
             placeholder="Search clients..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => onSearchChange(e.target.value)}
           />
         </div>
       </div>
