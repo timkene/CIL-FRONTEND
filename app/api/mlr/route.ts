@@ -4,12 +4,15 @@ const MEDICLOUD_BASE = (process.env.MEDICLOUD_API_URL ?? 'https://api.clearlineh
 const MEDICLOUD_API_KEY = process.env.MEDICLOUD_API_KEY ?? ''
 export const maxDuration = 60
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!MEDICLOUD_API_KEY) {
     return NextResponse.json({ error: 'MediCloud API key is not configured' }, { status: 503 })
   }
   try {
-    const response = await fetch(`${MEDICLOUD_BASE}/mlr/summary`, {
+    const params = new URL(request.url).searchParams
+    const limit = params.get('limit') ?? '50'
+    const offset = params.get('offset') ?? '0'
+    const response = await fetch(`${MEDICLOUD_BASE}/mlr/summary?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(55_000),
       headers: { Accept: 'application/json', 'X-API-Key': MEDICLOUD_API_KEY },
