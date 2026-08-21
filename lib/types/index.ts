@@ -68,6 +68,18 @@ export interface LiveMLRSummary {
   error: string | null
 }
 
+export interface LiveMLRPage {
+  data: LiveMLRSummary[]
+  active_contracts: number
+  total_active_contracts: number
+  offset: number
+  limit: number
+  has_more: boolean
+  failed_contracts: number
+  source: string
+  fetched_at: string
+}
+
 export interface TopProvider {
   rank:          number
   rank_by:       string

@@ -11,7 +11,8 @@ import { useMlrData } from '@/hooks/useMlrData'
 import { MLR_THRESHOLDS } from '@/lib/constants'
 
 export default function MLRPage() {
-  const { data, loading, error, refetch } = useMlrData()
+  const [page, setPage] = useState(0)
+  const { data: result, loading, error, refetch } = useMlrData(page, 50)
   const [refreshing, setRefreshing] = useState(false)
 
   if (loading) return <LoadingSpinner message="Loading MLR data..." />
@@ -24,7 +25,7 @@ export default function MLRPage() {
   }
 
   const handleExport = () => {
-    const rows = data ?? []
+    const rows = result?.data ?? []
     const header = ['Client', 'Group ID', 'Contract ID', 'Start', 'End', 'Debit', 'Medical Cost', 'MLR', 'Active Lives', 'Utilized Members', 'Utilization %']
     const csv = [header, ...rows.map(r => [r.group_name, r.group_id, r.contract_id, r.start_date, r.end_date ?? '', r.total_debit_amount, r.total_actual_medical_cost, r.actual_mlr, r.enrolled_members, r.utilized_members, r.member_utilization_pct])]
       .map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(','))
@@ -37,7 +38,7 @@ export default function MLRPage() {
     URL.revokeObjectURL(url)
   }
 
-  const rows        = data ?? []
+  const rows        = result?.data ?? []
   const lastUpdated = rows.length
     ? new Date(rows.reduce((max, r) => r.fetched_at > max ? r.fetched_at : max, rows[0].fetched_at))
         .toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -87,7 +88,7 @@ export default function MLRPage() {
             </Button>
           </div>
           <div className="text-sm text-slate-500">
-            {rows.length} total clients • {active.length} active
+            Showing {result?.offset + 1 ?? 0}–{(result?.offset ?? 0) + rows.length} of {result?.total_active_contracts ?? 0} active contracts
           </div>
         </div>
 
@@ -130,6 +131,26 @@ export default function MLRPage() {
         </div>
 
         <ClientsTable data={rows} />
+
+        <div className="flex items-center justify-between border-t border-slate-200 pt-4">
+          <Button
+            variant="secondary"
+            size="md"
+            disabled={page === 0 || loading}
+            onClick={() => setPage(current => Math.max(0, current - 1))}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-slate-500">Page {page + 1}</span>
+          <Button
+            variant="secondary"
+            size="md"
+            disabled={!result?.has_more || loading}
+            onClick={() => setPage(current => current + 1)}
+          >
+            Next
+          </Button>
+        </div>
       </div>
     </>
   )
