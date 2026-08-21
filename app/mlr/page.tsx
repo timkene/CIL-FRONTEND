@@ -36,8 +36,8 @@ export default function MLRPage() {
 
   const handleExport = () => {
     const rows = result?.data ?? []
-    const header = ['Client', 'Group ID', 'Contract ID', 'Start', 'End', 'Debit', 'Medical Cost', 'MLR', 'Active Lives', 'Utilized Members', 'Utilization %']
-    const csv = [header, ...rows.map(r => [r.group_name, r.group_id, r.contract_id, r.start_date, r.end_date ?? '', r.total_debit_amount, r.total_actual_medical_cost, r.actual_mlr, r.enrolled_members, r.utilized_members, r.member_utilization_pct])]
+    const header = ['Client', 'Group ID', 'Contract ID', 'Start', 'End', 'Debit', 'Cash Received', 'Plan Premium', 'Medical Cost', 'MLR', 'Active Lives', 'Active Plans', 'Utilized Members', 'Utilization %']
+    const csv = [header, ...rows.map(r => [r.group_name, r.group_id, r.contract_id, r.start_date, r.end_date ?? '', r.total_debit_amount, r.cash_received, r.plan_premium, r.total_actual_medical_cost, r.actual_mlr, r.enrolled_members, r.active_plans, r.utilized_members, r.member_utilization_pct])]
       .map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(','))
       .join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
