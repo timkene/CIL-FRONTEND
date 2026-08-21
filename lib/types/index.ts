@@ -57,6 +57,10 @@ export interface LiveMLRSummary {
   start_date: string
   end_date: string | null
   total_debit_amount: number
+  cash_received: number
+  active_plans: number
+  active_plan_rows: number
+  plan_premium: number
   actual_claims_cost: number
   unclaimed_pa_cost: number
   total_actual_medical_cost: number

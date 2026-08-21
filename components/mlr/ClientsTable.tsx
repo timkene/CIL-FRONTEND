@@ -72,7 +72,11 @@ export default function ClientsTable({ data, search, onSearchChange }: Props) {
               <th className="px-6 py-3">Client</th>
               <th className="px-6 py-3">Period</th>
               <th className="px-6 py-3">Debit</th>
+              <th className="px-6 py-3">Cash Received</th>
+              <th className="px-6 py-3">Plan Premium</th>
               <th className="px-6 py-3">Medical Cost</th>
+              <th className="px-6 py-3">Active Lives</th>
+              <th className="px-6 py-3">Active Plans</th>
               <th className="px-6 py-3 text-center">MLR</th>
               <th className="px-6 py-3">Medical Margin</th>
               <th className="px-6 py-3 text-center">Utilization</th>
@@ -88,7 +92,11 @@ export default function ClientsTable({ data, search, onSearchChange }: Props) {
                   {r.start_date} → {r.end_date}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">{fmt(r.total_debit_amount)}</td>
+                <td className="px-6 py-4 whitespace-nowrap">{fmt(r.cash_received)}</td>
+                <td className="px-6 py-4 whitespace-nowrap">{fmt(r.plan_premium)}</td>
                 <td className="px-6 py-4 whitespace-nowrap">{fmt(r.total_actual_medical_cost)}</td>
+                <td className="px-6 py-4 whitespace-nowrap">{r.enrolled_members.toLocaleString()}</td>
+                <td className="px-6 py-4 whitespace-nowrap">{r.active_plans.toLocaleString()}</td>
                 <td className="px-6 py-4 text-center"><StatusBadge mlr={r.actual_mlr} /></td>
                 <td className="px-6 py-4"><MarginBadge premiumPmpm={r.total_debit_amount} actualPmpm={r.total_actual_medical_cost} /></td>
                 <td className="px-6 py-4 text-center"><UtilizationBadge pct={r.member_utilization_pct} /></td>
@@ -105,7 +113,7 @@ export default function ClientsTable({ data, search, onSearchChange }: Props) {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-6 py-12 text-center text-slate-400">No active clients found</td>
+                <td colSpan={14} className="px-6 py-12 text-center text-slate-400">No active clients found</td>
               </tr>
             )}
           </tbody>
