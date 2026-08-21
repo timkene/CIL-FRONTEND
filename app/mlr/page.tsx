@@ -39,6 +39,7 @@ export default function MLRPage() {
   }
 
   const rows        = result?.data ?? []
+  const offset       = result?.offset ?? 0
   const lastUpdated = rows.length
     ? new Date(rows.reduce((max, r) => r.fetched_at > max ? r.fetched_at : max, rows[0].fetched_at))
         .toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -88,7 +89,7 @@ export default function MLRPage() {
             </Button>
           </div>
           <div className="text-sm text-slate-500">
-            Showing {result?.offset + 1 ?? 0}–{(result?.offset ?? 0) + rows.length} of {result?.total_active_contracts ?? 0} active contracts
+            Showing {rows.length ? offset + 1 : 0}–{offset + rows.length} of {result?.total_active_contracts ?? 0} active contracts
           </div>
         </div>
 
