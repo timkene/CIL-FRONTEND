@@ -12,7 +12,10 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams
     const limit = params.get('limit') ?? '50'
     const offset = params.get('offset') ?? '0'
-    const response = await fetch(`${MEDICLOUD_BASE}/mlr/summary?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`, {
+    const search = params.get('search') ?? ''
+    const query = new URLSearchParams({ limit, offset })
+    if (search.trim()) query.set('search', search.trim())
+    const response = await fetch(`${MEDICLOUD_BASE}/mlr/summary?${query.toString()}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(55_000),
       headers: { Accept: 'application/json', 'X-API-Key': MEDICLOUD_API_KEY },
