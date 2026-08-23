@@ -14,6 +14,12 @@ export default function MLRPage() {
   const [page, setPage] = useState(0)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState({
+    mlrMin: '', mlrMax: '', utilizationMin: '', utilizationMax: '',
+    debitMin: '', debitMax: '', premiumMin: '', premiumMax: '',
+    cashMin: '', cashMax: '', livesMin: '', livesMax: '',
+    plansMin: '', plansMax: '', endFrom: '', endTo: '',
+  })
   const { data: result, loading, error, refetch } = useMlrData(page, 50, search)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -35,7 +41,7 @@ export default function MLRPage() {
   }
 
   const handleExport = () => {
-    const rows = result?.data ?? []
+    const rows = filteredRows
     const header = ['Client', 'Group ID', 'Contract ID', 'Start', 'End', 'Debit', 'Cash Received', 'Plan Premium', 'Medical Cost', 'MLR', 'Active Lives', 'Active Plans', 'Utilized Members', 'Utilization %']
     const csv = [header, ...rows.map(r => [r.group_name, r.group_id, r.contract_id, r.start_date, r.end_date ?? '', r.total_debit_amount, r.cash_received, r.plan_premium, r.total_actual_medical_cost, r.actual_mlr, r.enrolled_members, r.active_plans, r.utilized_members, r.member_utilization_pct])]
       .map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(','))
@@ -50,12 +56,25 @@ export default function MLRPage() {
 
   const rows        = result?.data ?? []
   const offset       = result?.offset ?? 0
+  const numberInRange = (value: number, min: string, max: string) =>
+    (!min || value >= Number(min)) && (!max || value <= Number(max))
+  const filteredRows = rows.filter(r =>
+    numberInRange(r.actual_mlr * 100, filters.mlrMin, filters.mlrMax) &&
+    numberInRange(r.member_utilization_pct, filters.utilizationMin, filters.utilizationMax) &&
+    numberInRange(r.total_debit_amount, filters.debitMin, filters.debitMax) &&
+    numberInRange(r.plan_premium, filters.premiumMin, filters.premiumMax) &&
+    numberInRange(r.cash_received, filters.cashMin, filters.cashMax) &&
+    numberInRange(r.enrolled_members, filters.livesMin, filters.livesMax) &&
+    numberInRange(r.active_plans, filters.plansMin, filters.plansMax) &&
+    (!filters.endFrom || (r.end_date ?? '') >= filters.endFrom) &&
+    (!filters.endTo || (r.end_date ?? '') <= filters.endTo)
+  )
   const lastUpdated = rows.length
     ? new Date(rows.reduce((max, r) => r.fetched_at > max ? r.fetched_at : max, rows[0].fetched_at))
         .toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     : '—'
 
-  const active  = rows.filter(r => r.total_debit_amount > 0)
+  const active  = filteredRows.filter(r => r.total_debit_amount > 0)
   const total   = active.length || 1
 
   const breakdown = [
@@ -99,15 +118,38 @@ export default function MLRPage() {
             </Button>
           </div>
           <div className="text-sm text-slate-500">
-            Showing {rows.length ? offset + 1 : 0}–{offset + rows.length} of {result?.total_active_contracts ?? 0} active contracts
+            Showing {filteredRows.length} of {rows.length} loaded · {result?.total_active_contracts ?? 0} total active contracts
           </div>
         </div>
 
-        {/* Mode tabs */}
-        <SummaryCards data={rows} />
+        <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold">Filter clients</h3>
+            <Button variant="ghost" size="sm" onClick={() => setFilters({ mlrMin: '', mlrMax: '', utilizationMin: '', utilizationMax: '', debitMin: '', debitMax: '', premiumMin: '', premiumMax: '', cashMin: '', cashMax: '', livesMin: '', livesMax: '', plansMin: '', plansMax: '', endFrom: '', endTo: '' })}>Clear filters</Button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              ['MLR %', 'mlrMin', 'mlrMax'], ['Utilization %', 'utilizationMin', 'utilizationMax'],
+              ['Debit (₦)', 'debitMin', 'debitMax'], ['Plan premium (₦)', 'premiumMin', 'premiumMax'],
+              ['Cash received (₦)', 'cashMin', 'cashMax'], ['Active lives', 'livesMin', 'livesMax'],
+              ['Active plans', 'plansMin', 'plansMax'],
+            ].map(([label, minKey, maxKey]) => (
+              <label key={label} className="text-xs font-semibold text-slate-500">
+                {label}
+                <span className="flex gap-1 mt-1">
+                  <input type="number" placeholder="Min" value={filters[minKey as keyof typeof filters]} onChange={e => setFilters(f => ({ ...f, [minKey]: e.target.value }))} className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm font-normal" />
+                  <input type="number" placeholder="Max" value={filters[maxKey as keyof typeof filters]} onChange={e => setFilters(f => ({ ...f, [maxKey]: e.target.value }))} className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm font-normal" />
+                </span>
+              </label>
+            ))}
+            <label className="text-xs font-semibold text-slate-500">Contract end date<span className="flex gap-1 mt-1"><input type="date" value={filters.endFrom} onChange={e => setFilters(f => ({ ...f, endFrom: e.target.value }))} className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm font-normal" /><input type="date" value={filters.endTo} onChange={e => setFilters(f => ({ ...f, endTo: e.target.value }))} className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm font-normal" /></span></label>
+          </div>
+        </div>
+
+        <SummaryCards data={filteredRows} />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          <BinsChart data={rows} />
+          <BinsChart data={filteredRows} />
 
           {/* MLR breakdown panel */}
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
@@ -141,7 +183,7 @@ export default function MLRPage() {
           </div>
         </div>
 
-        <ClientsTable data={rows} search={searchInput} onSearchChange={setSearchInput} />
+        <ClientsTable data={filteredRows} search={searchInput} onSearchChange={setSearchInput} />
 
         <div className="flex items-center justify-between border-t border-slate-200 pt-4">
           <Button
