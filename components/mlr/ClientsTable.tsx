@@ -38,9 +38,7 @@ function MarginBadge({ premiumPmpm, actualPmpm }: { premiumPmpm: number; actualP
 }
 
 export default function ClientsTable({ data, search, onSearchChange }: Props) {
-  const rows = data
-    .filter(d => d.total_debit_amount > 0)
-    .sort((a, b) => {
+  const rows = [...data].sort((a, b) => {
       return b.actual_mlr - a.actual_mlr
     })
 

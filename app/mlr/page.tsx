@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import SummaryCards from '@/components/mlr/SummaryCards'
 import BinsChart from '@/components/mlr/BinsChart'
 import ClientsTable from '@/components/mlr/ClientsTable'
@@ -20,17 +20,10 @@ export default function MLRPage() {
     cashMin: '', cashMax: '', livesMin: '', livesMax: '',
     plansMin: '', plansMax: '', endFrom: '', endTo: '',
   })
-  const hasFilters = Object.values(filters).some(Boolean)
+  const [appliedFilters, setAppliedFilters] = useState(filters)
+  const hasFilters = Object.values(appliedFilters).some(Boolean)
   const { data: result, loading, error, refetch } = useMlrData(page, 50, search, hasFilters)
   const [refreshing, setRefreshing] = useState(false)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setPage(0)
-      setSearch(searchInput.trim())
-    }, 300)
-    return () => window.clearTimeout(timer)
-  }, [searchInput])
 
   if (loading) return <LoadingSpinner message="Loading MLR data..." />
   if (error)   return <ErrorCard message={error} onRetry={refetch} />
@@ -39,6 +32,21 @@ export default function MLRPage() {
     setRefreshing(true)
     await refetch()
     setRefreshing(false)
+  }
+
+  const applyQuery = () => {
+    setPage(0)
+    setSearch(searchInput.trim())
+    setAppliedFilters(filters)
+  }
+
+  const clearQuery = () => {
+    const emptyFilters = { mlrMin: '', mlrMax: '', utilizationMin: '', utilizationMax: '', debitMin: '', debitMax: '', premiumMin: '', premiumMax: '', cashMin: '', cashMax: '', livesMin: '', livesMax: '', plansMin: '', plansMax: '', endFrom: '', endTo: '' }
+    setSearchInput('')
+    setSearch('')
+    setFilters(emptyFilters)
+    setAppliedFilters(emptyFilters)
+    setPage(0)
   }
 
   const handleExport = () => {
@@ -60,15 +68,15 @@ export default function MLRPage() {
   const numberInRange = (value: number, min: string, max: string) =>
     (!min || value >= Number(min)) && (!max || value <= Number(max))
   const filteredRows = rows.filter(r =>
-    numberInRange(r.actual_mlr * 100, filters.mlrMin, filters.mlrMax) &&
-    numberInRange(r.member_utilization_pct, filters.utilizationMin, filters.utilizationMax) &&
-    numberInRange(r.total_debit_amount, filters.debitMin, filters.debitMax) &&
-    numberInRange(r.plan_premium, filters.premiumMin, filters.premiumMax) &&
-    numberInRange(r.cash_received, filters.cashMin, filters.cashMax) &&
-    numberInRange(r.enrolled_members, filters.livesMin, filters.livesMax) &&
-    numberInRange(r.active_plans, filters.plansMin, filters.plansMax) &&
-    (!filters.endFrom || (r.end_date ?? '') >= filters.endFrom) &&
-    (!filters.endTo || (r.end_date ?? '') <= filters.endTo)
+    numberInRange(r.actual_mlr * 100, appliedFilters.mlrMin, appliedFilters.mlrMax) &&
+    numberInRange(r.member_utilization_pct, appliedFilters.utilizationMin, appliedFilters.utilizationMax) &&
+    numberInRange(r.total_debit_amount, appliedFilters.debitMin, appliedFilters.debitMax) &&
+    numberInRange(r.plan_premium, appliedFilters.premiumMin, appliedFilters.premiumMax) &&
+    numberInRange(r.cash_received, appliedFilters.cashMin, appliedFilters.cashMax) &&
+    numberInRange(r.enrolled_members, appliedFilters.livesMin, appliedFilters.livesMax) &&
+    numberInRange(r.active_plans, appliedFilters.plansMin, appliedFilters.plansMax) &&
+    (!appliedFilters.endFrom || (r.end_date ?? '') >= appliedFilters.endFrom) &&
+    (!appliedFilters.endTo || (r.end_date ?? '') <= appliedFilters.endTo)
   )
   const displayRows = hasFilters ? filteredRows.slice(page * 50, (page + 1) * 50) : filteredRows
   const lastUpdated = rows.length
@@ -127,7 +135,10 @@ export default function MLRPage() {
         <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold">Filter clients</h3>
-            <Button variant="ghost" size="sm" onClick={() => setFilters({ mlrMin: '', mlrMax: '', utilizationMin: '', utilizationMax: '', debitMin: '', debitMax: '', premiumMin: '', premiumMax: '', cashMin: '', cashMax: '', livesMin: '', livesMax: '', plansMin: '', plansMax: '', endFrom: '', endTo: '' })}>Clear filters</Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={clearQuery}>Clear filters</Button>
+              <Button variant="primary" size="sm" onClick={applyQuery}>Apply search &amp; filters</Button>
+            </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
