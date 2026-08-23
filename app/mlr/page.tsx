@@ -20,7 +20,8 @@ export default function MLRPage() {
     cashMin: '', cashMax: '', livesMin: '', livesMax: '',
     plansMin: '', plansMax: '', endFrom: '', endTo: '',
   })
-  const { data: result, loading, error, refetch } = useMlrData(page, 50, search)
+  const hasFilters = Object.values(filters).some(Boolean)
+  const { data: result, loading, error, refetch } = useMlrData(page, 50, search, hasFilters)
   const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
@@ -69,6 +70,7 @@ export default function MLRPage() {
     (!filters.endFrom || (r.end_date ?? '') >= filters.endFrom) &&
     (!filters.endTo || (r.end_date ?? '') <= filters.endTo)
   )
+  const displayRows = hasFilters ? filteredRows.slice(page * 50, (page + 1) * 50) : filteredRows
   const lastUpdated = rows.length
     ? new Date(rows.reduce((max, r) => r.fetched_at > max ? r.fetched_at : max, rows[0].fetched_at))
         .toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -183,7 +185,7 @@ export default function MLRPage() {
           </div>
         </div>
 
-        <ClientsTable data={filteredRows} search={searchInput} onSearchChange={setSearchInput} />
+        <ClientsTable data={displayRows} search={searchInput} onSearchChange={setSearchInput} />
 
         <div className="flex items-center justify-between border-t border-slate-200 pt-4">
           <Button
@@ -198,7 +200,7 @@ export default function MLRPage() {
           <Button
             variant="secondary"
             size="md"
-            disabled={!result?.has_more || loading}
+            disabled={loading || (hasFilters ? (page + 1) * 50 >= filteredRows.length : !result?.has_more)}
             onClick={() => setPage(current => current + 1)}
           >
             Next
