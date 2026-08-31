@@ -1,4 +1,5 @@
 export const ALL_MODULES = [
+  'Tariff Banding',
   'MLR Data',
   'Premium Analysis',
   'Client Analysis',
@@ -31,6 +32,7 @@ export interface User {
 }
 
 export const MODULE_ROUTES: { href: string; label: string; module: string }[] = [
+  { href: '/tariff',          label: 'Tariff Banding',   module: 'Tariff Banding' },
   { href: '/mlr',            label: 'MLR Data',        module: 'MLR Data' },
   { href: '/claims',         label: 'Premium Analysis', module: 'Premium Analysis' },
   { href: '/clients',        label: 'Client Analysis',  module: 'Client Analysis' },
