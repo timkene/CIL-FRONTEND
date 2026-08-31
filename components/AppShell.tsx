@@ -16,6 +16,7 @@ const PUBLIC_PATHS = ['/login', '/survey']
 
 // Map exact path prefixes to module names
 const PATH_MODULE: Record<string, string> = {
+  '/tariff':           'Tariff Banding',
   '/mlr':              'MLR Data',
   '/claims':           'Premium Analysis',
   '/clients':          'Client Analysis',
