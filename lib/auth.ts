@@ -1,4 +1,5 @@
 export const ALL_MODULES = [
+  'Tariff Banding',
   'MLR Data',
   'Enrollee Provider Mapping',
   'SLA Generator',
@@ -25,6 +26,7 @@ export interface User {
 }
 
 export const MODULE_ROUTES: { href: string; label: string; module: string }[] = [
+  { href: '/tariff',          label: 'Tariff Banding',   module: 'Tariff Banding' },
   { href: '/mlr',            label: 'MLR Data',        module: 'MLR Data' },
   { href: '/providers/band-mapping',  label: 'Enrollee Provider Mapping', module: 'Enrollee Provider Mapping' },
   { href: '/sla',                     label: 'SLA Generator',             module: 'SLA Generator' },
