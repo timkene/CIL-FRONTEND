@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 
 const configured = (process.env.MEDICLOUD_API_URL ?? process.env.MLR_API_URL ?? 'https://api.clearlinehmo.com').replace(/\/+$/, '')
-const hostBase = configured.replace(/\/api\/v1$/, '').replace(/\/mlr$/, '')
+// Accept a host, versioned API base, or a previously configured MLR endpoint.
+// The office API serves this route at /mlr/summary.
+const hostBase = configured
+  .replace(/\/summary$/, '')
+  .replace(/\/mlr$/, '')
+  .replace(/\/api\/v1$/, '')
 const MEDICLOUD_BASE = `${hostBase}/mlr`
 const MEDICLOUD_API_KEY = process.env.MEDICLOUD_API_KEY ?? ''
 export const maxDuration = 60
