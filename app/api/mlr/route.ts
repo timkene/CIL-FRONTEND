@@ -1,34 +1,62 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
-export async function GET(req: NextRequest) {
-  const configured = process.env.MLR_API_URL ?? process.env.API_URL ?? 'http://localhost:8000'
-  const base = configured.replace(/\/+$/, '')
-  // Accept either a host (https://api.example.com) or a versioned API base.
-  const mlrApiUrl = /\/api\/v1$/.test(base) ? `${base}/mlr` : `${base}/api/v1/mlr`
-  const { searchParams } = req.nextUrl
+  const configured = (
+    process.env.MEDICLOUD_API_URL ??
+    process.env.MLR_API_URL ??
+    'https://api.clearlinehmo.com'
+  ).replace(/\/+$/, '')
 
-  try {
-    const res = await fetch(
-      `${mlrApiUrl}/mlr/summary?${searchParams.toString()}`,
-      {
-        cache: 'no-store',
-        headers: {
-          Accept: 'application/json',
-          ...(process.env.MEDICLOUD_API_KEY
-            ? { 'X-API-Key': process.env.MEDICLOUD_API_KEY }
-            : {}),
-        },
-      }
-    )
-    if (!res.ok) {
-      const text = await res.text()
-      return NextResponse.json({ error: text }, { status: res.status })
+  const MEDICLOUD_BASE = /\/api\/v1$/.test(configured)
+    ? configured
+    : `${configured}/api/v1`
+
+  const MEDICLOUD_API_KEY = process.env.MEDICLOUD_API_KEY ?? ''
+
+  export const maxDuration = 60
+
+  export async function GET(request: Request) {
+    if (!MEDICLOUD_API_KEY) {
+      return NextResponse.json(
+        { error: 'MediCloud API key is not configured' },
+        { status: 503 }
+      )
     }
-    return NextResponse.json(await res.json())
-  } catch {
-    return NextResponse.json(
-      { error: `MLR API unreachable at ${mlrApiUrl}. Make sure it is running.` },
-      { status: 503 }
-    )
+
+    try {
+      const params = new URL(request.url).searchParams
+      const query = new URLSearchParams({
+        limit: params.get('limit') ?? '50',
+        offset: params.get('offset') ?? '0',
+      })
+
+      const search = params.get('search')?.trim()
+      if (search) query.set('search', search)
+
+      const response = await fetch(
+        `${MEDICLOUD_BASE}/mlr/summary?${query.toString()}`,
+        {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(55_000),
+          headers: {
+            Accept: 'application/json',
+            'X-API-Key': MEDICLOUD_API_KEY,
+          },
+        }
+      )
+
+      const body = await response.text()
+
+      return new NextResponse(body, {
+        status: response.status,
+        headers: {
+          'content-type':
+            response.headers.get('content-type') ?? 'application/json',
+        },
+      })
+    } catch {
+      return NextResponse.json(
+        { error: 'Live MLR service unavailable' },
+        { status: 502 }
+      )
+    }
   }
-}

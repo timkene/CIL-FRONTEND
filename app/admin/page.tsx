@@ -56,9 +56,6 @@ function StatusBadge({ status }: { status: string }) {
 function ModuleChip({ mod }: { mod: string }) {
   const colors: Record<string, string> = {
     'MLR Data':        'bg-blue-100 text-blue-700',
-    'Premium Analysis':'bg-purple-100 text-purple-700',
-    'Client Analysis': 'bg-indigo-100 text-indigo-700',
-    'Renewal Plan':    'bg-teal-100 text-teal-700',
     'Admin':           'bg-rose-100 text-rose-700',
     'ALL':             'bg-amber-100 text-amber-700',
   }

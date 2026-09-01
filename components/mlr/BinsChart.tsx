@@ -1,22 +1,22 @@
 'use client'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer } from 'recharts'
-import { MLRSummary } from '@/lib/supabase'
+import type { LiveMLRSummary } from '@/lib/types'
 
-interface Props { data: MLRSummary[]; mode: 'actual' | 'paid' }
+interface Props { data: LiveMLRSummary[] }
 
 const BINS = [
-  { key: 'profitable', label: '< 50%',    color: '#22c55e', desc: 'Profitable' },
-  { key: 'warning',    label: '50 – 75%', color: '#f59e0b', desc: 'Watch Zone' },
+  { key: 'profitable', label: '≤ 70%',    color: '#22c55e', desc: 'Profitable' },
+  { key: 'warning',    label: '70 – 75%', color: '#f59e0b', desc: 'Watch Zone' },
   { key: 'loss',       label: '> 75%',    color: '#ef4444', desc: 'Loss Territory' },
 ]
 
-export default function BinsChart({ data, mode }: Props) {
+export default function BinsChart({ data }: Props) {
   const withDebit = data.filter(d => d.total_debit_amount > 0)
 
   const counts = withDebit.reduce(
     (acc, d) => {
-      const mlr = mode === 'actual' ? d.actual_mlr : d.claims_paid_mlr
-      if (mlr < 0.50)      acc.profitable++
+      const mlr = d.actual_mlr
+      if (mlr <= 0.70)     acc.profitable++
       else if (mlr <= 0.75) acc.warning++
       else                  acc.loss++
       return acc
@@ -34,7 +34,7 @@ export default function BinsChart({ data, mode }: Props) {
       <div className="mb-6">
         <h4 className="text-lg font-bold">Portfolio MLR Distribution</h4>
         <p className="text-sm text-slate-500">
-          Clients grouped by {mode === 'actual' ? 'Actual' : 'Claims-Paid'} MLR band
+          Clients grouped by live MLR band
         </p>
       </div>
 
