@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server'
 
+<<<<<<< HEAD
   const configured = (
     process.env.MEDICLOUD_API_URL ??
     process.env.MLR_API_URL ??
     'https://api.clearlinehmo.com'
   ).replace(/\/+$/, '')
 
-  const MEDICLOUD_BASE = /\/api\/v1$/.test(configured)
-    ? configured
-    : `${configured}/api/v1`
+  const hostBase = configured.replace(/\/api\/v1$/, '').replace(/\/mlr$/, '')
+  const MEDICLOUD_BASE = `${hostBase}/mlr`
 
   const MEDICLOUD_API_KEY = process.env.MEDICLOUD_API_KEY ?? ''
 
@@ -20,6 +20,33 @@ import { NextResponse } from 'next/server'
         { error: 'MediCloud API key is not configured' },
         { status: 503 }
       )
+=======
+export async function GET(req: NextRequest) {
+  const configured = process.env.MLR_API_URL ?? process.env.API_URL ?? 'http://localhost:8000'
+  const base = configured.replace(/\/+$/, '')
+  // Accept either a host (https://api.example.com) or a versioned API base.
+  // The office deployment mounts MLR at /mlr (not under /api/v1).
+  const hostBase = base.replace(/\/api\/v1$/, '').replace(/\/mlr$/, '')
+  const mlrApiUrl = `${hostBase}/mlr`
+  const { searchParams } = req.nextUrl
+
+  try {
+    const res = await fetch(
+      `${mlrApiUrl}/summary?${searchParams.toString()}`,
+      {
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+          ...(process.env.MEDICLOUD_API_KEY
+            ? { 'X-API-Key': process.env.MEDICLOUD_API_KEY }
+            : {}),
+        },
+      }
+    )
+    if (!res.ok) {
+      const text = await res.text()
+      return NextResponse.json({ error: text }, { status: res.status })
+>>>>>>> bf7f677 (Point MLR proxy at office root route)
     }
 
     try {
