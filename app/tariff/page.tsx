@@ -28,7 +28,14 @@ export default function TariffPage() {
   async function searchProviders() {
     if (!providerSearch.trim()) return
     const res = await fetch(`${API}/api/v1/tariff-banding/providers?search=${encodeURIComponent(providerSearch)}&limit=25`)
-    if (res.ok) setProviders((await res.json()).results ?? [])
+    if (res.ok) {
+      const found = (await res.json()).results ?? []
+      setProviders(found)
+      // Numeric MediCloud IDs can be valid even when the directory hides the
+      // provider (for example, an inactive listing). Preserve that ID so the
+      // tariff endpoint can return the authoritative result.
+      if (!found.length && /^\d+$/.test(providerSearch.trim())) setProviderId(providerSearch.trim())
+    }
   }
 
   async function analyse() {
