@@ -39,10 +39,12 @@ export default function TariffPage() {
   }
 
   async function analyse() {
-    if (!providerId) return setError('Provider ID is required.')
+    if (!providerId && /^\d+$/.test(providerSearch.trim())) setProviderId(providerSearch.trim())
+    const effectiveProviderId = providerId || providerSearch.trim()
+    if (!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) return setError('Select a provider or enter a numeric provider ID.')
     setBusy(true); setError(''); setResult(null)
     try {
-      const body = { provider_id: providerId, current_band: currentBand || null,
+      const body = { provider_id: effectiveProviderId, current_band: currentBand || null,
         provider_tariff: tariff ? await readCsv(tariff) : undefined }
       const res = await fetch(`${API}/api/v1/tariff-banding/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error(await res.text())
