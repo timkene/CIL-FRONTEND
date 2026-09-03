@@ -8,20 +8,28 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 async function readCsv(file: File) {
   const lines = (await file.text()).trim().split(/\r?\n/)
-  const headers = lines.shift()!.split(',').map(x => x.trim())
+  const parse = (line: string) => line.match(/("(?:[^"]|"")*"|[^,]*)(?:,|$)/g)?.slice(0,-1).map(v => v.replace(/,$/,'').replace(/^"|"$/g,'').replace(/""/g,'"')) ?? []
+  const headers = parse(lines.shift()!).map(x => x.trim())
   return lines.map(line => {
-    const values = line.split(',')
+    const values = parse(line)
     return Object.fromEntries(headers.map((h, i) => [h, Number.isNaN(Number(values[i])) ? values[i]?.trim() : Number(values[i])]))
   })
 }
 
 export default function TariffPage() {
   const [providerId, setProviderId] = useState('')
+  const [providerSearch, setProviderSearch] = useState('')
+  const [providers, setProviders] = useState<any[]>([])
   const [currentBand, setCurrentBand] = useState('')
   const [tariff, setTariff] = useState<File>()
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  async function searchProviders() {
+    if (!providerSearch.trim()) return
+    const res = await fetch(`${API}/api/v1/tariff-banding/providers?search=${encodeURIComponent(providerSearch)}&limit=25`)
+    if (res.ok) setProviders((await res.json()).results ?? [])
+  }
 
   async function analyse() {
     if (!providerId) return setError('Provider ID is required.')
@@ -42,8 +50,8 @@ export default function TariffPage() {
       <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
         <div><h2 className="text-lg font-bold">Analyse a provider tariff</h2><p className="text-sm text-slate-500 mt-1">Select an existing provider to use its live tariff, or upload a new provider tariff. Network weights and reference prices are managed centrally.</p></div>
         <div className="grid md:grid-cols-2 gap-4">
-          <label className="text-sm font-medium">Provider ID<input className="mt-1 w-full border rounded-lg p-2" value={providerId} onChange={e => setProviderId(e.target.value)} /></label>
-          <label className="text-sm font-medium">Current human band<select className="mt-1 w-full border rounded-lg p-2" value={currentBand} onChange={e => setCurrentBand(e.target.value)}><option value="">Unknown</option>{['D','C','B','A','Special'].map(b => <option key={b}>{b}</option>)}</select></label>
+          <div className="text-sm font-medium"><label>Find provider<input className="mt-1 w-full border rounded-lg p-2" value={providerSearch} onChange={e => setProviderSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchProviders()} placeholder="Name, code or ID" /></label><button type="button" className="mt-2 text-blue-700" onClick={searchProviders}>Search</button>{providers.length > 0 && <select className="mt-2 w-full border rounded-lg p-2" value={providerId} onChange={e => { setProviderId(e.target.value); const p=providers.find(x => String(x.provider_id)===e.target.value); setCurrentBand(p?.band_category?.replace(/^Band\s+/i,'') ?? '') }}><option value="">Select provider</option>{providers.map(p => <option key={p.provider_id} value={p.provider_id}>{p.provider_name} ({p.provider_id}) — {p.band_category ?? 'Unbanded'}</option>)}</select>}</div>
+          <label className="text-sm font-medium">Current human band<select className="mt-1 w-full border rounded-lg p-2" value={currentBand} onChange={e => setCurrentBand(e.target.value)}><option value="">Auto-detect</option>{['D','C','B','A','Special'].map(b => <option key={b}>{b}</option>)}</select></label>
           <label className="text-sm font-medium">New provider tariff CSV (optional)<input className="mt-1 block w-full text-sm" type="file" accept=".csv" onChange={e => setTariff(e.target.files?.[0])} /></label>
         </div>
         <Button variant="primary" loading={busy} onClick={analyse}>Run analysis</Button>
