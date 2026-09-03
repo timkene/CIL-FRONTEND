@@ -6,7 +6,6 @@ import { Button } from '@/components/ui'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ''
 
-async function readJson(file: File) { return JSON.parse(await file.text()) }
 async function readCsv(file: File) {
   const lines = (await file.text()).trim().split(/\r?\n/)
   const headers = lines.shift()!.split(',').map(x => x.trim())
@@ -20,19 +19,17 @@ export default function TariffPage() {
   const [providerId, setProviderId] = useState('')
   const [currentBand, setCurrentBand] = useState('')
   const [tariff, setTariff] = useState<File>()
-  const [references, setReferences] = useState<File>()
-  const [weights, setWeights] = useState<File>()
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function analyse() {
-    if (!providerId || !tariff || !references || !weights) return setError('Provider ID and all three data files are required.')
+    if (!providerId) return setError('Provider ID is required.')
     setBusy(true); setError(''); setResult(null)
     try {
       const body = { provider_id: providerId, current_band: currentBand || null,
-        provider_tariff: await readCsv(tariff), reference_prices: await readJson(references), weights: await readJson(weights) }
-      const res = await fetch(`${API}/api/v1/tariff-banding/relative`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        provider_tariff: tariff ? await readCsv(tariff) : undefined }
+      const res = await fetch(`${API}/api/v1/tariff-banding/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error(await res.text())
       setResult(await res.json())
     } catch (e) { setError(e instanceof Error ? e.message : 'Analysis failed') }
@@ -43,13 +40,11 @@ export default function TariffPage() {
     <PageHeader title="Tariff Banding" right={<span className="text-sm text-slate-500">Network-relative provider review</span>} />
     <main className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
       <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-        <div><h2 className="text-lg font-bold">Analyse a tariff</h2><p className="text-sm text-slate-500 mt-1">Use the frozen network reference and weight snapshots. Missing tariff lines are reported as coverage exceptions.</p></div>
+        <div><h2 className="text-lg font-bold">Analyse a provider tariff</h2><p className="text-sm text-slate-500 mt-1">Select an existing provider to use its live tariff, or upload a new provider tariff. Network weights and reference prices are managed centrally.</p></div>
         <div className="grid md:grid-cols-2 gap-4">
           <label className="text-sm font-medium">Provider ID<input className="mt-1 w-full border rounded-lg p-2" value={providerId} onChange={e => setProviderId(e.target.value)} /></label>
           <label className="text-sm font-medium">Current human band<select className="mt-1 w-full border rounded-lg p-2" value={currentBand} onChange={e => setCurrentBand(e.target.value)}><option value="">Unknown</option>{['D','C','B','A','Special'].map(b => <option key={b}>{b}</option>)}</select></label>
-          <label className="text-sm font-medium">Provider tariff CSV<input className="mt-1 block w-full text-sm" type="file" accept=".csv" onChange={e => setTariff(e.target.files?.[0])} /></label>
-          <label className="text-sm font-medium">Reference prices JSON<input className="mt-1 block w-full text-sm" type="file" accept=".json" onChange={e => setReferences(e.target.files?.[0])} /></label>
-          <label className="text-sm font-medium">Frozen weights JSON<input className="mt-1 block w-full text-sm" type="file" accept=".json" onChange={e => setWeights(e.target.files?.[0])} /></label>
+          <label className="text-sm font-medium">New provider tariff CSV (optional)<input className="mt-1 block w-full text-sm" type="file" accept=".csv" onChange={e => setTariff(e.target.files?.[0])} /></label>
         </div>
         <Button variant="primary" loading={busy} onClick={analyse}>Run analysis</Button>
         {error && <p className="text-sm text-rose-600">{error}</p>}
