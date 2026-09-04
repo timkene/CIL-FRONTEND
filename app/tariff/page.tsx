@@ -42,10 +42,10 @@ export default function TariffPage() {
   async function analyse() {
     if (!providerId && /^\d+$/.test(providerSearch.trim())) setProviderId(providerSearch.trim())
     const effectiveProviderId = providerId || providerSearch.trim()
-    if (!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) return setError('Select a provider or enter a numeric provider ID.')
+    if ((!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) && !tariff) return setError('Select a provider, or upload a new provider tariff CSV.')
     setBusy(true); setError(''); setResult(null)
     try {
-      const body = { provider_id: effectiveProviderId, current_band: currentBand || null,
+      const body = { provider_id: effectiveProviderId || undefined, current_band: currentBand || null,
         provider_tariff: tariff ? await readCsv(tariff) : undefined }
       const res = await fetch(`${API}/api/v1/tariff-banding/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error(await res.text())
@@ -56,10 +56,10 @@ export default function TariffPage() {
 
   async function generateNegotiation() {
     const effectiveProviderId = providerId || providerSearch.trim()
-    if (!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) return setError('Select a provider or enter a numeric provider ID.')
+    if ((!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) && !tariff) return setError('Select a provider, or upload a new provider tariff CSV.')
     setBusy(true); setError('')
     try {
-      const body = { provider_id: effectiveProviderId, provider_tariff: tariff ? await readCsv(tariff) : undefined }
+      const body = { provider_id: effectiveProviderId || undefined, provider_tariff: tariff ? await readCsv(tariff) : undefined }
       const res = await fetch(`${API}/api/v1/tariff-banding/negotiate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error(await res.text())
       setNegotiation(await res.json())
