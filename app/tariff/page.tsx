@@ -23,6 +23,7 @@ export default function TariffPage() {
   const [currentBand, setCurrentBand] = useState('')
   const [tariff, setTariff] = useState<File>()
   const [result, setResult] = useState<any>(null)
+  const [negotiation, setNegotiation] = useState<any>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   async function searchProviders() {
@@ -53,6 +54,19 @@ export default function TariffPage() {
     finally { setBusy(false) }
   }
 
+  async function generateNegotiation() {
+    const effectiveProviderId = providerId || providerSearch.trim()
+    if (!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) return setError('Select a provider or enter a numeric provider ID.')
+    setBusy(true); setError('')
+    try {
+      const body = { provider_id: effectiveProviderId, provider_tariff: tariff ? await readCsv(tariff) : undefined }
+      const res = await fetch(`${API}/api/v1/tariff-banding/negotiate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!res.ok) throw new Error(await res.text())
+      setNegotiation(await res.json())
+    } catch (e) { setError(e instanceof Error ? e.message : 'Negotiation failed') }
+    finally { setBusy(false) }
+  }
+
   return <>
     <PageHeader title="Tariff Banding" right={<span className="text-sm text-slate-500">Network-relative provider review</span>} />
     <main className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
@@ -63,10 +77,11 @@ export default function TariffPage() {
           <label className="text-sm font-medium">Current human band<select className="mt-1 w-full border rounded-lg p-2" value={currentBand} onChange={e => setCurrentBand(e.target.value)}><option value="">Auto-detect</option>{['D','C','B','A','Special'].map(b => <option key={b}>{b}</option>)}</select></label>
           <label className="text-sm font-medium">New provider tariff CSV (optional)<input className="mt-1 block w-full text-sm" type="file" accept=".csv" onChange={e => setTariff(e.target.files?.[0])} /></label>
         </div>
-        <Button variant="primary" loading={busy} onClick={analyse}>Run analysis</Button>
+        <div className="flex flex-wrap gap-3"><Button variant="primary" loading={busy} onClick={analyse}>Run analysis</Button><Button variant="secondary" loading={busy} onClick={generateNegotiation}>Generate negotiation plan</Button></div>
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </section>
       {result && <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-5"><div className="grid sm:grid-cols-4 gap-4">{[['Tariff index', result.tariff_index?.toFixed(3)], ['Calculated band', result.tariff_band], ['Coverage', `${(result.coverage * 100).toFixed(1)}%`], ['Credibility', `${(result.credibility * 100).toFixed(1)}%`]].map(([label,value]) => <div key={label as string} className="rounded-lg bg-slate-50 p-4"><p className="text-xs text-slate-500">{label}</p><p className="text-xl font-bold mt-1">{value}</p></div>)}</div>{result.exception && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Do not confirm this band yet.</strong> Coverage is below 70% or the tariff integrity is unusually low. Request the missing core tariff lines and review the listed outliers with Contracting.</div>}<div className="flex flex-wrap gap-4 text-sm"><span>Current human band: {result.current_band ?? 'Unclassified'}</span><span>Reference: current network median</span><span className={result.exception ? 'text-rose-600 font-bold' : 'text-emerald-600'}>{result.exception ? 'Manual review required' : 'Eligible for confirmation'}</span></div>{result.missing_procedures?.length > 0 && <details open><summary className="cursor-pointer font-semibold text-amber-800">Missing core procedures ({result.missing_procedures.length})</summary><p className="mt-2 text-xs text-slate-500">Request prices for these procedures before confirming the band. No price has been imputed.</p><pre className="mt-3 max-h-64 overflow-auto text-xs bg-amber-50 p-3 rounded">{result.missing_procedures.map((p:any) => `${p.procedure_code} — ${p.procedure_name ?? ''}`).join('\\n')}</pre></details>}<details><summary className="cursor-pointer font-semibold">Outlier lines ({result.outliers?.length ?? 0})</summary><pre className="mt-3 max-h-64 overflow-auto text-xs bg-slate-50 p-3 rounded">{JSON.stringify(result.outliers, null, 2)}</pre></details></section>}
+      {negotiation && <section className="bg-white rounded-xl border border-slate-200 p-6"><h2 className="text-lg font-bold">Negotiation plan</h2><p className="text-sm text-slate-500 mt-1">{negotiation.counter_lines} of {negotiation.total_lines} lines flagged · projected excess exposure ₦{Number(negotiation.projected_exposure).toLocaleString()}</p><p className="mt-3 text-sm">Top counteroffer lines are ranked by annual exposure. Review and approve before sending to the provider.</p></section>}
     </main>
   </>
 }
