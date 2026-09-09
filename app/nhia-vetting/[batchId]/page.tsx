@@ -92,6 +92,7 @@ interface Batch {
   supervisor_notes?: string
   reviewed_by?: string
   reviewed_at?: string
+  vetting_error?: string | null
 }
 
 const DECISION_STYLE: Record<string, string> = {
@@ -121,6 +122,11 @@ const REQUIRED_BATCH_ROW_FIELDS: { key: keyof BatchRow; label: string }[] = [
 function fmtMoney(n: number | null | undefined) {
   if (n == null) return '—'
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function toDateInputValue(s?: string | null): string {
+  const value = (s || '').trim()
+  return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : ''
 }
 
 function newRowId() {
@@ -217,8 +223,13 @@ export default function BatchDetailPage() {
       if (!res.ok) throw new Error('Batch not found')
       const data: Batch = await res.json()
       setBatch(data)
-      setRows(data.rows || [])
-      setBatchDateSubmitted(data.batch_date_submitted || '')
+      setRows((data.rows || []).map(row => ({
+        ...row,
+        encounter_date_from: toDateInputValue(row.encounter_date_from),
+        encounter_date_to: toDateInputValue(row.encounter_date_to),
+        date_submitted: toDateInputValue(row.date_submitted),
+      })))
+      setBatchDateSubmitted(toDateInputValue(data.batch_date_submitted))
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load batch')
     } finally {
@@ -262,9 +273,9 @@ export default function BatchDetailPage() {
       diagnosis_name: lr.diagnosis_name || '',
       provider_id: lr.provider_id || '',
       provider_name: lr.provider_name || '',
-      encounter_date_from: lr.encounter_date_from || '',
-      encounter_date_to: lr.encounter_date_from || '',
-      date_submitted: batchDateSubmitted,
+      encounter_date_from: toDateInputValue(lr.encounter_date_from),
+      encounter_date_to: toDateInputValue(lr.encounter_date_from),
+      date_submitted: toDateInputValue(batchDateSubmitted),
       price: null,
       quantity: 1,
       is_manual: false,
@@ -673,7 +684,7 @@ export default function BatchDetailPage() {
                 <label className="text-xs text-slate-500 whitespace-nowrap font-medium">Date Submitted:</label>
                 <input
                   type="date"
-                  value={batchDateSubmitted}
+                  value={toDateInputValue(batchDateSubmitted)}
                   onChange={e => {
                     const d = e.target.value
                     setBatchDateSubmitted(d)
@@ -738,6 +749,11 @@ export default function BatchDetailPage() {
       </div>
 
       {error && <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 whitespace-pre-line">{error}</div>}
+      {(batch.status === 'OPEN' || batch.status === 'PROCESSING') && batch.vetting_error && (
+        <div role="alert" className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 whitespace-pre-line">
+          Vetting failed: {batch.vetting_error}
+        </div>
+      )}
 
       {/* ── PROCESSING: spinner banner ── */}
       {isProcessing && (
@@ -949,21 +965,21 @@ export default function BatchDetailPage() {
                             </td>
                             {/* Enc. Date From */}
                             <td className="px-3 py-2">
-                              <input type="date" value={row.encounter_date_from}
+                              <input type="date" value={toDateInputValue(row.encounter_date_from)}
                                 onChange={e => updateRow(row.row_id, 'encounter_date_from', e.target.value)}
                                 className={`border focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32 ${showErrors && !row.encounter_date_from ? 'border-rose-400 bg-rose-50/40' : 'border-transparent hover:border-slate-200'}`}
                               />
                             </td>
                             {/* Enc. Date To */}
                             <td className="px-3 py-2">
-                              <input type="date" value={row.encounter_date_to}
+                              <input type="date" value={toDateInputValue(row.encounter_date_to)}
                                 onChange={e => updateRow(row.row_id, 'encounter_date_to', e.target.value)}
                                 className={`border focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32 ${showErrors && !row.encounter_date_to ? 'border-rose-400 bg-rose-50/40' : 'border-transparent hover:border-slate-200'}`}
                               />
                             </td>
                             {/* Date Submitted */}
                             <td className="px-3 py-2">
-                              <input type="date" value={row.date_submitted}
+                              <input type="date" value={toDateInputValue(row.date_submitted)}
                                 onChange={e => updateRow(row.row_id, 'date_submitted', e.target.value)}
                                 className={`border focus:border-[#137fec] focus:outline-none rounded px-1 py-0.5 text-xs w-32 ${showErrors && !row.date_submitted ? 'border-rose-400 bg-rose-50/40' : 'border-slate-200'}`}
                               />
