@@ -6,7 +6,15 @@ import { Button } from '@/components/ui'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ''
 
+function pct(value: number | null | undefined) {
+  if (value == null || Number.isNaN(Number(value))) return '—'
+  return `${(Number(value) * 100).toFixed(1)}%`
+}
+
 async function readCsv(file: File) {
+  if (file.name.toLowerCase().endsWith('.xlsx') || file.type.includes('spreadsheet')) {
+    throw new Error('Upload the Migration CSV export (procedure_code, procedure_name, hospital_price). XLSX is accepted by the API once converted to CSV.')
+  }
   const lines = (await file.text()).trim().split(/\r?\n/)
   const parse = (line: string) => line.match(/("(?:[^"]|"")*"|[^,]*)(?:,|$)/g)?.slice(0,-1).map(v => v.replace(/,$/,'').replace(/^"|"$/g,'').replace(/""/g,'"')) ?? []
   const headers = parse(lines.shift()!).map(x => x.trim())
@@ -67,20 +75,65 @@ export default function TariffPage() {
     finally { setBusy(false) }
   }
 
+  const relativeBand = result?.relative_band ?? result?.tariff_band
+  const sub = result?.sub_indices ?? {}
+
   return <>
     <PageHeader title="Tariff Banding" right={<span className="text-sm text-slate-500">Network-relative provider review</span>} />
     <main className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
       <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-        <div><h2 className="text-lg font-bold">Analyse a provider tariff</h2><p className="text-sm text-slate-500 mt-1">Search and select a provider for its live tariff, or upload a new tariff for review. Network weights and reference prices are managed centrally.</p><ol className="mt-3 list-decimal pl-5 text-sm text-slate-600 space-y-1"><li>Search by provider name or numeric MediCloud ID, then select the provider.</li><li>For a new tariff, upload CSV columns <code>procedure_code, procedure_name, tariff_amount</code>.</li><li>Run analysis and review coverage and outlier exposure before confirming a band.</li></ol></div>
+        <div>
+          <h2 className="text-lg font-bold">Analyse a provider tariff</h2>
+          <p className="text-sm text-slate-500 mt-1">Search and select a provider for its live tariff, or upload a new tariff or a finalized Migration export. Network weights and reference prices are managed centrally.</p>
+          <ol className="mt-3 list-decimal pl-5 text-sm text-slate-600 space-y-1">
+            <li>Search by provider name or numeric MediCloud ID, then select the provider.</li>
+            <li>Upload either banding CSV <code>procedure_code, procedure_name, tariff_amount</code> or Migration export <code>procedure_code, procedure_name, hospital_price, original_hospital_item</code>.</li>
+            <li>The overall result is a <strong>relative price-index band</strong>. Per-line signed ₦ ladder positions are not the hospital band.</li>
+            <li>Run analysis and review coverage and outlier exposure before confirming a band.</li>
+          </ol>
+        </div>
         <div className="grid md:grid-cols-2 gap-4">
           <div className="text-sm font-medium"><label>Find provider<input className="mt-1 w-full border rounded-lg p-2" value={providerSearch} onChange={e => setProviderSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchProviders()} placeholder="Name, code or ID" /></label><button type="button" className="mt-2 text-blue-700" onClick={searchProviders}>Search</button>{providers.length > 0 && <select className="mt-2 w-full border rounded-lg p-2" value={providerId} onChange={e => { setProviderId(e.target.value); const p=providers.find(x => String(x.provider_id)===e.target.value); setCurrentBand(p?.band_category?.replace(/^Band\s+/i,'') ?? '') }}><option value="">Select provider</option>{providers.map(p => <option key={p.provider_id} value={p.provider_id}>{p.provider_name} ({p.provider_id}) — {p.band_category ?? 'Unbanded'}</option>)}</select>}</div>
           <label className="text-sm font-medium">Current human band<select className="mt-1 w-full border rounded-lg p-2" value={currentBand} onChange={e => setCurrentBand(e.target.value)}><option value="">Auto-detect</option>{['D','C','B','A','Special'].map(b => <option key={b}>{b}</option>)}</select></label>
-          <label className="text-sm font-medium">New provider tariff CSV (optional)<input className="mt-1 block w-full text-sm" type="file" accept=".csv" onChange={e => setTariff(e.target.files?.[0])} /></label>
+          <label className="text-sm font-medium">Tariff or Migration CSV (optional)<input className="mt-1 block w-full text-sm" type="file" accept=".csv,.xlsx" onChange={e => setTariff(e.target.files?.[0])} /></label>
         </div>
         <div className="flex flex-wrap gap-3"><Button variant="primary" loading={busy} onClick={analyse}>Run analysis</Button><Button variant="secondary" loading={busy} onClick={generateNegotiation}>Generate negotiation plan</Button></div>
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </section>
-      {result && <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-5"><div className="grid sm:grid-cols-4 gap-4">{[['Tariff index', result.tariff_index?.toFixed(3)], ['Calculated band', result.tariff_band], ['Coverage', `${(result.coverage * 100).toFixed(1)}%`], ['Credibility', `${(result.credibility * 100).toFixed(1)}%`]].map(([label,value]) => <div key={label as string} className="rounded-lg bg-slate-50 p-4"><p className="text-xs text-slate-500">{label}</p><p className="text-xl font-bold mt-1">{value}</p></div>)}</div>{result.exception && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Do not confirm this band yet.</strong> Coverage is below 70% or the tariff integrity is unusually low. Request the missing core tariff lines and review the listed outliers with Contracting.</div>}<div className="flex flex-wrap gap-4 text-sm"><span>Current human band: {result.current_band ?? 'Unclassified'}</span><span>Reference: current network median</span><span className={result.exception ? 'text-rose-600 font-bold' : 'text-emerald-600'}>{result.exception ? 'Manual review required' : 'Eligible for confirmation'}</span></div>{result.missing_procedures?.length > 0 && <details open><summary className="cursor-pointer font-semibold text-amber-800">Missing core procedures ({result.missing_procedures.length})</summary><p className="mt-2 text-xs text-slate-500">Request prices for these procedures before confirming the band. No price has been imputed.</p><pre className="mt-3 max-h-64 overflow-auto text-xs bg-amber-50 p-3 rounded">{result.missing_procedures.map((p:any) => `${p.procedure_code} — ${p.procedure_name ?? ''}`).join('\\n')}</pre></details>}<details><summary className="cursor-pointer font-semibold">Outlier lines ({result.outliers?.length ?? 0})</summary><pre className="mt-3 max-h-64 overflow-auto text-xs bg-slate-50 p-3 rounded">{JSON.stringify(result.outliers, null, 2)}</pre></details></section>}
+      {result && <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+          <p><strong>Overall relative band: {relativeBand ?? '—'}</strong> (weighted hospital / reference index {result.tariff_index?.toFixed(3) ?? '—'}). This is not a signed Clearline ₦ ladder band.</p>
+          <p className="mt-1 text-blue-800">{result.signed_ladder_note}</p>
+        </div>
+        <div className="grid sm:grid-cols-4 gap-4">
+          {[
+            ['Relative band', relativeBand],
+            ['Tariff index', result.tariff_index?.toFixed(3)],
+            ['Weighted coverage', pct(result.weighted_coverage)],
+            ['Raw core coverage', pct(result.raw_coverage ?? result.coverage)],
+          ].map(([label,value]) => <div key={label as string} className="rounded-lg bg-slate-50 p-4"><p className="text-xs text-slate-500">{label}</p><p className="text-xl font-bold mt-1">{value}</p></div>)}
+        </div>
+        {result.concentration?.warning && <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-950"><strong>Concentration warning.</strong> Largest core weight {pct(result.concentration.largest_single_code_weight)}; top 5 cumulative {pct(result.concentration.top5_cumulative_weight)}. Weights are not capped in this foundation pass.</div>}
+        {result.exception && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Do not confirm this band yet.</strong> Coverage is below 70% or the tariff integrity is unusually low. Request the missing core tariff lines and review the listed outliers with Contracting.</div>}
+        <div className="flex flex-wrap gap-4 text-sm"><span>Current human band: {result.current_band ?? 'Unclassified'}</span><span>Reference: {result.reference_method ?? 'max(network median, Band D floor)'}</span><span>Sensitivity (drop {result.sensitivity_dropped_code ?? '—'}): {result.sensitivity_band ?? '—'} {result.sensitivity_index != null ? result.sensitivity_index.toFixed(3) : ''}</span><span className={result.exception ? 'text-rose-600 font-bold' : 'text-emerald-600'}>{result.exception ? 'Manual review required' : 'Eligible for confirmation'}</span></div>
+        <div>
+          <h3 className="font-semibold">Informational sub-indices</h3>
+          <p className="text-xs text-slate-500 mt-1">Diagnostic only. They do not assign the overall relative band.</p>
+          <div className="mt-2 grid sm:grid-cols-4 gap-3 text-sm">
+            {[['consultations','Consultations'],['medications','Medications'],['procedures_diagnostics','Procedures / diagnostics'],['OTHER','Other']].map(([key,label]) => {
+              const row = sub[key] ?? {}
+              return <div key={key} className="rounded-lg border border-slate-200 p-3"><p className="text-xs text-slate-500">{label}</p><p className="font-bold">{row.band ?? '—'} {row.index != null ? row.index.toFixed(3) : ''}</p><p className="text-xs text-slate-500">weight {pct(row.weight_sum)}</p></div>
+            })}
+          </div>
+        </div>
+        {result.concentration?.top5?.length > 0 && <details open><summary className="cursor-pointer font-semibold">Top contributors ({result.concentration.top5.length})</summary><p className="mt-2 text-xs text-slate-500">Cumulative top 5 weight {pct(result.concentration.top5_cumulative_weight)}. Largest single-code weight {pct(result.concentration.largest_single_code_weight)}.</p><pre className="mt-3 max-h-64 overflow-auto text-xs bg-slate-50 p-3 rounded">{result.concentration.top5.map((p:any) => `${p.procedure_code} — ${p.procedure_name ?? ''} · weight ${(p.weight * 100).toFixed(1)}% · ₦${p.hospital_price ?? ''}`).join('\n')}</pre></details>}
+        {result.excluded_codes?.length > 0 && <details open><summary className="cursor-pointer font-semibold text-slate-800">Excluded family codes ({result.excluded_codes.length})</summary><p className="mt-2 text-xs text-slate-500">Codes containing NHIS, NHIA, or BRG anywhere (same rule as Tariff Migration) are dropped before the index. This can include catalog codes such as BRG0606.</p><pre className="mt-3 max-h-64 overflow-auto text-xs bg-slate-50 p-3 rounded">{result.excluded_codes.map((p:any) => `${p.procedure_code} — ${p.procedure_name ?? ''} · ${p.reason}`).join('\n')}</pre></details>}
+        {result.duplicate_codes?.length > 0 && <details open><summary className="cursor-pointer font-semibold text-rose-800">Duplicate mapped codes ({result.duplicate_codes.length})</summary><p className="mt-2 text-xs text-slate-500">Equal prices collapse to the first row. Conflicting prices are excluded from the official index and listed for review.</p><pre className="mt-3 max-h-64 overflow-auto text-xs bg-rose-50 p-3 rounded">{result.duplicate_codes.map((d:any) => `${d.procedure_code} — ${d.conflict ? 'CONFLICT ' + JSON.stringify(d.prices) : 'same price ₦' + d.price} · n=${d.count}`).join('\n')}</pre></details>}
+        {result.missing_procedures?.length > 0 && <details open><summary className="cursor-pointer font-semibold text-amber-800">Missing core procedures ({result.missing_procedures.length})</summary><p className="mt-2 text-xs text-slate-500">Request prices for these procedures before confirming the band. No price has been imputed.</p><pre className="mt-3 max-h-64 overflow-auto text-xs bg-amber-50 p-3 rounded">{result.missing_procedures.map((p:any) => `${p.procedure_code} — ${p.procedure_name ?? ''}`).join('\n')}</pre></details>}
+        {result.non_core_lines?.length > 0 && <details open><summary className="cursor-pointer font-semibold">Non-core mapped procedures ({result.non_core_lines.length})</summary><p className="mt-2 text-xs text-slate-500">Mapped Migration lines outside the frozen core basket. They stay in the appendix and do not disappear. Signed ladder on a line is not the hospital band.</p><pre className="mt-3 max-h-64 overflow-auto text-xs bg-slate-50 p-3 rounded">{result.non_core_lines.map((p:any) => `${p.procedure_code} — ${p.procedure_name ?? ''} · ₦${p.hospital_price ?? ''} · ladder ${p.signed_ladder_position ?? 'n/a'}`).join('\n')}</pre></details>}
+        <details><summary className="cursor-pointer font-semibold">Line-level analysis ({result.line_items?.length ?? 0})</summary><p className="mt-2 text-xs text-slate-500">signed_ladder_position is the procedure’s Clearline ₦ ladder, distinct from the overall relative band {relativeBand}.</p><pre className="mt-3 max-h-64 overflow-auto text-xs bg-slate-50 p-3 rounded">{JSON.stringify(result.line_items, null, 2)}</pre></details>
+        <details><summary className="cursor-pointer font-semibold">Outlier lines ({result.outliers?.length ?? 0})</summary><pre className="mt-3 max-h-64 overflow-auto text-xs bg-slate-50 p-3 rounded">{JSON.stringify(result.outliers, null, 2)}</pre></details>
+      </section>}
       {negotiation && <section className="bg-white rounded-xl border border-slate-200 p-6"><h2 className="text-lg font-bold">Negotiation plan</h2><p className="text-sm text-slate-500 mt-1">{negotiation.counter_lines} of {negotiation.total_lines} lines flagged · projected excess exposure ₦{Number(negotiation.projected_exposure).toLocaleString()}</p><p className="mt-3 text-sm">Top counteroffer lines are ranked by annual exposure. Review and approve before sending to the provider.</p></section>}
     </main>
   </>
