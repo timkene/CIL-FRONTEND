@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui'
+import { tariffBandingCopy } from '@/lib/tariff-banding-copy'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ''
 
@@ -76,6 +77,7 @@ export default function TariffPage() {
   }
 
   const relativeBand = result?.relative_band ?? result?.tariff_band
+  const bandingCopy = tariffBandingCopy(result)
   const sub = result?.sub_indices ?? {}
 
   return <>
@@ -102,12 +104,12 @@ export default function TariffPage() {
       </section>
       {result && <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
-          <p><strong>Overall relative band: {relativeBand ?? '—'}</strong> (weighted hospital / reference index {result.tariff_index?.toFixed(3) ?? '—'}). This is not a signed Clearline ₦ ladder band.</p>
+          <p><strong>{bandingCopy.officialLabel}: {relativeBand ?? '—'}</strong> (weighted hospital / reference index {result.tariff_index?.toFixed(3) ?? '—'}). This is not a signed Clearline ₦ ladder band.</p>
           <p className="mt-1 text-blue-800">{result.signed_ladder_note}</p>
         </div>
         <div className="grid sm:grid-cols-4 gap-4">
           {[
-            ['Relative band', relativeBand],
+            [bandingCopy.officialLabel, relativeBand],
             ['Tariff index', result.tariff_index?.toFixed(3)],
             ['Weighted coverage', pct(result.weighted_coverage)],
             ['Raw core coverage', pct(result.raw_coverage ?? result.coverage)],
@@ -115,7 +117,13 @@ export default function TariffPage() {
         </div>
         {result.concentration?.warning && <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-950"><strong>Concentration warning.</strong> Largest core weight {pct(result.concentration.largest_single_code_weight)}; top 5 cumulative {pct(result.concentration.top5_cumulative_weight)}. Weights are not capped in this foundation pass.</div>}
         {result.exception && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Do not confirm this band yet.</strong> Coverage is below 70% or the tariff integrity is unusually low. Request the missing core tariff lines and review the listed outliers with Contracting.</div>}
-        <div className="flex flex-wrap gap-4 text-sm"><span>Current human band: {result.current_band ?? 'Unclassified'}</span><span>Reference: {result.reference_method ?? 'max(network median, Band D floor)'}</span><span>Sensitivity (drop {result.sensitivity_dropped_code ?? '—'}): {result.sensitivity_band ?? '—'} {result.sensitivity_index != null ? result.sensitivity_index.toFixed(3) : ''}</span><span className={result.exception ? 'text-rose-600 font-bold' : 'text-emerald-600'}>{result.exception ? 'Manual review required' : 'Eligible for confirmation'}</span></div>
+        <div className="flex flex-wrap gap-4 text-sm"><span>Current human band: {result.current_band ?? 'Unclassified'}</span><span>Reference: {result.reference_method ?? 'max(network median, Band D floor)'}</span><span className={result.exception ? 'text-rose-600 font-bold' : 'text-emerald-600'}>{result.exception ? 'Manual review required' : 'Eligible for confirmation'}</span></div>
+        <div className="rounded-lg border border-slate-200 p-4 text-sm">
+          <h3 className="font-semibold">{bandingCopy.sensitivityLabel}</h3>
+          <p className="mt-1">Drop {result.sensitivity_dropped_code ?? '—'}: {result.sensitivity_band ?? '—'} {result.sensitivity_index != null ? result.sensitivity_index.toFixed(3) : ''}</p>
+          <p className="mt-1 text-slate-600">{bandingCopy.diagnosticNote}</p>
+          {bandingCopy.unbandableNote && <p className="mt-1 text-slate-600">{bandingCopy.unbandableNote}</p>}
+        </div>
         <div>
           <h3 className="font-semibold">Informational sub-indices</h3>
           <p className="text-xs text-slate-500 mt-1">Diagnostic only. They do not assign the overall relative band.</p>
