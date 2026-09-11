@@ -3,6 +3,13 @@ import { useEffect, useState, Fragment, useMemo } from 'react'
 import Link from 'next/link'
 import { Button, Badge, useToast } from '@/components/ui'
 import { nhiaFetch } from '@/lib/nhia-fetch'
+import {
+  hasReviewLineItems,
+  reviewIsDirty,
+  reviewSnapshot,
+  supervisorReviewHeaders,
+  type ReviewState,
+} from '@/lib/nhia-supervisor-review'
 
 const API = process.env.NEXT_PUBLIC_NHIA_API_URL || 'http://localhost:8005'
 
@@ -121,18 +128,67 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
   const [submitting,   setSubmitting]   = useState(false)
   const [savingDraft,  setSavingDraft]  = useState(false)
   const [batchRows,    setBatchRows]    = useState<BatchRow[]>([])
-  const [rowsLoaded,   setRowsLoaded]   = useState(false)
+  const [detail,       setDetail]       = useState<Batch | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError,  setDetailError]  = useState('')
+  const [savedSnapshot, setSavedSnapshot] = useState(() => reviewSnapshot({
+    overrides: draft?.overrides ?? {},
+    qtyEdits: draft?.qty_edits ?? {},
+    priceEdits: draft?.price_edits ?? {},
+    overrideReasons: draft?.override_reasons ?? {},
+    notes: draft?.notes ?? '',
+    reviewer: draft?.reviewer ?? 'Supervisor',
+  }))
   const toast = useToast()
 
-  // Lazy-load full batch rows when the card is first expanded
-  useEffect(() => {
-    if (expanded && !rowsLoaded) {
-      nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}`)
-        .then(r => r.json())
-        .then(data => { setBatchRows(data.rows || []); setRowsLoaded(true) })
-        .catch(() => setRowsLoaded(true))
+  const currentReview = (): ReviewState => ({
+    overrides, qtyEdits, priceEdits, overrideReasons, notes, reviewer,
+  })
+  const unsavedEdits = reviewIsDirty(currentReview(), savedSnapshot)
+
+  async function loadDetail() {
+    setDetailLoading(true)
+    setDetailError('')
+    try {
+      const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}`, {
+        headers: supervisorReviewHeaders(),
+      })
+      if (!res.ok) throw new Error('Failed to load review detail')
+      const data = await res.json()
+      setDetail(data)
+      setBatchRows(data.rows || [])
+      const nextDraft = data.review_draft as ReviewDraft | undefined
+      if (nextDraft) {
+        const nextState: ReviewState = {
+          overrides: nextDraft.overrides ?? {},
+          qtyEdits: nextDraft.qty_edits ?? {},
+          priceEdits: nextDraft.price_edits ?? {},
+          overrideReasons: nextDraft.override_reasons ?? {},
+          notes: nextDraft.notes ?? '',
+          reviewer: nextDraft.reviewer ?? 'Supervisor',
+        }
+        setOverrides(nextState.overrides)
+        setQtyEdits(nextState.qtyEdits)
+        setPriceEdits(nextState.priceEdits)
+        setOverrideReasons(nextState.overrideReasons)
+        setNotes(nextState.notes)
+        setReviewer(nextState.reviewer)
+        setSavedSnapshot(reviewSnapshot(nextState))
+      } else {
+        setSavedSnapshot(reviewSnapshot(currentReview()))
+      }
+    } catch {
+      setDetailError('Failed to load detailed vetting results')
+    } finally {
+      setDetailLoading(false)
     }
-  }, [expanded, rowsLoaded, batch.batch_id])
+  }
+
+  useEffect(() => {
+    if (expanded && !detail && !detailLoading && !detailError) {
+      loadDetail()
+    }
+  }, [expanded, detail, detailLoading, detailError, batch.batch_id])
 
   const rowByKey = useMemo(() => {
     const m = new Map<string, BatchRow>()
@@ -168,7 +224,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
 
   // Recalculate totals with overrides for summary display
   const allItems: Array<{ eid: string; item: LineItem }> = []
-  for (const r of batch.vetting_results ?? []) {
+  for (const r of detail?.vetting_results ?? []) {
     for (const item of r.line_items ?? []) {
       allItems.push({ eid: r.enrollee_id ?? '', item })
     }
@@ -208,6 +264,10 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
       toast.error(`Reason required for ${missingReasons.length} row${missingReasons.length > 1 ? 's' : ''} before accepting`)
       return
     }
+    if (unsavedEdits) {
+      toast.error('Save Override before approving — unsaved quantity or status edits will not be used')
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -227,7 +287,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
       }).filter(o => o.override_decision)
       const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}/accept`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: supervisorReviewHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({
           action:       'ACCEPT',
           reviewed_by:  reviewer,
@@ -257,7 +317,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
     try {
       const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}/draft`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: supervisorReviewHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({
           reviewer,
           notes,
@@ -268,12 +328,14 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
         }),
       })
       if (res.ok) {
-        toast.success('Progress saved — come back anytime to continue this batch')
+        setSavedSnapshot(reviewSnapshot(currentReview()))
+        toast.success('Override saved — review the updated values, then approve')
+        await loadDetail()
       } else {
-        toast.error('Failed to save progress')
+        toast.error('Failed to save override')
       }
     } catch (err) {
-      toast.error('Error saving progress')
+      toast.error('Error saving override')
     } finally {
       setSavingDraft(false)
     }
@@ -284,7 +346,7 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
     try {
       const res = await nhiaFetch(`${API}/api/v1/nhia/web-batches/${batch.batch_id}/reject`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: supervisorReviewHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({ action: 'REJECT', reviewed_by: reviewer, notes }),
       })
       if (res.ok) {
@@ -347,9 +409,20 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
 
       {expanded && (
         <>
+          {detailLoading && (
+            <p className="px-5 py-6 text-sm text-slate-400">Loading detailed vetting results…</p>
+          )}
+          {detailError && (
+            <p className="px-5 py-6 text-sm text-rose-600">{detailError}</p>
+          )}
+          {!detailLoading && !detailError && !hasReviewLineItems(detail) && (
+            <p className="px-5 py-6 text-sm text-slate-500">No detailed vetting results for this batch.</p>
+          )}
+          {!detailLoading && hasReviewLineItems(detail) && (
+          <>
           {/* Per-row vetting results */}
           <div className="divide-y divide-slate-100 max-h-[520px] overflow-y-auto">
-            {(batch.vetting_results ?? []).map((result, gi) => (
+            {(detail?.vetting_results ?? []).map((result, gi) => (
               <div key={gi}>
                 {/* Enrollee subheader */}
                 {(() => {
@@ -617,20 +690,21 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                   size="md"
                   onClick={doAccept}
                   loading={submitting}
+                  disabled={unsavedEdits || detailLoading || !hasReviewLineItems(detail)}
                   className="flex-1 bg-emerald-500 hover:bg-emerald-600 focus-visible:ring-emerald-500"
                 >
                   {overrideCount > 0
-                    ? `Accept (${overrideCount} override${overrideCount !== 1 ? 's' : ''}) — Store to MongoDB`
-                    : 'Accept — Store to MongoDB'}
+                    ? `Approve (${overrideCount} override${overrideCount !== 1 ? 's' : ''})`
+                    : 'Approve'}
                 </Button>
                 <Button
                   variant="outline"
                   size="md"
                   onClick={doSaveDraft}
                   loading={savingDraft}
-                  disabled={submitting}
+                  disabled={submitting || !unsavedEdits}
                 >
-                  Save Progress
+                  Save Override
                 </Button>
                 <Button
                   variant="danger"
@@ -641,14 +715,19 @@ function BatchCard({ batch, onReviewed }: { batch: Batch; onReviewed: () => void
                   Reject
                 </Button>
               </div>
-              {draft?.saved_at && (
+              {unsavedEdits && (
+                <p className="text-[11px] text-amber-700">Unsaved quantity or status edits. Save Override before approving.</p>
+              )}
+              {(detail?.review_draft ?? draft)?.saved_at && (
                 <p className="text-[11px] text-slate-400">
-                  Draft last saved {new Date(draft.saved_at).toLocaleString()}
-                  {draft.saved_by ? ` by ${draft.saved_by}` : ''}
+                  Override last saved {new Date((detail?.review_draft ?? draft)!.saved_at!).toLocaleString()}
+                  {(detail?.review_draft ?? draft)?.saved_by ? ` by ${(detail?.review_draft ?? draft)?.saved_by}` : ''}
                 </p>
               )}
             </div>
           </div>
+          </>
+          )}
         </>
       )}
     </div>
