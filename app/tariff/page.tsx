@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui'
+import { NegotiationPlan } from './NegotiationPlan'
+import { canTargetBand, targetBands, type TargetBand, type AnalysisRequest, type NegotiationResult } from '@/lib/tariff-negotiation'
 import { tariffBandingCopy } from '@/lib/tariff-banding-copy'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ''
@@ -32,7 +34,9 @@ export default function TariffPage() {
   const [currentBand, setCurrentBand] = useState('')
   const [tariff, setTariff] = useState<File>()
   const [result, setResult] = useState<any>(null)
-  const [negotiation, setNegotiation] = useState<any>(null)
+  const [negotiation, setNegotiation] = useState<NegotiationResult | null>(null)
+  const [targetBand, setTargetBand] = useState<TargetBand | ''>('')
+  const [analysisRequest, setAnalysisRequest] = useState<AnalysisRequest | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   async function searchProviders() {
@@ -49,6 +53,7 @@ export default function TariffPage() {
   }
 
   async function analyse() {
+    setNegotiation(null); setTargetBand(''); setAnalysisRequest(null)
     if (!providerId && /^\d+$/.test(providerSearch.trim())) setProviderId(providerSearch.trim())
     const effectiveProviderId = providerId || providerSearch.trim()
     if ((!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) && !tariff) return setError('Select a provider, or upload a new provider tariff CSV.')
@@ -59,17 +64,17 @@ export default function TariffPage() {
       const res = await fetch(`${API}/api/v1/tariff-banding/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error(await res.text())
       setResult(await res.json())
+      setAnalysisRequest(body)
     } catch (e) { setError(e instanceof Error ? e.message : 'Analysis failed') }
     finally { setBusy(false) }
   }
 
   async function generateNegotiation() {
-    const effectiveProviderId = providerId || providerSearch.trim()
-    if ((!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) && !tariff) return setError('Select a provider, or upload a new provider tariff CSV.')
-    setBusy(true); setError('')
+    if (busy || !analysisRequest || !canTargetBand(relativeBand, result?.exception, targetBand)) return
+    setBusy(true); setError(''); setNegotiation(null)
     try {
-      const body = { provider_id: effectiveProviderId || undefined, provider_tariff: tariff ? await readCsv(tariff) : undefined }
-      const res = await fetch(`${API}/api/v1/tariff-banding/negotiate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const body = { ...analysisRequest, target_relative_band: targetBand }
+      const res = await fetch(`${API}/api/v1/tariff-banding/negotiate-v2`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error(await res.text())
       setNegotiation(await res.json())
     } catch (e) { setError(e instanceof Error ? e.message : 'Negotiation failed') }
@@ -99,7 +104,7 @@ export default function TariffPage() {
           <label className="text-sm font-medium">Current human band<select className="mt-1 w-full border rounded-lg p-2" value={currentBand} onChange={e => setCurrentBand(e.target.value)}><option value="">Auto-detect</option>{['D','C','B','A','Special'].map(b => <option key={b}>{b}</option>)}</select></label>
           <label className="text-sm font-medium">Tariff or Migration CSV (optional)<input className="mt-1 block w-full text-sm" type="file" accept=".csv,.xlsx" onChange={e => setTariff(e.target.files?.[0])} /></label>
         </div>
-        <div className="flex flex-wrap gap-3"><Button variant="primary" loading={busy} onClick={analyse}>Run analysis</Button><Button variant="secondary" loading={busy} onClick={generateNegotiation}>Generate negotiation plan</Button></div>
+        <div className="flex flex-wrap gap-3"><Button variant="primary" loading={busy} onClick={analyse}>Run analysis</Button></div>
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </section>
       {result && <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
@@ -142,7 +147,23 @@ export default function TariffPage() {
         <details><summary className="cursor-pointer font-semibold">Line-level analysis ({result.line_items?.length ?? 0})</summary><p className="mt-2 text-xs text-slate-500">signed_ladder_position is the procedure’s Clearline ₦ ladder, distinct from the overall relative band {relativeBand}.</p><pre className="mt-3 max-h-64 overflow-auto text-xs bg-slate-50 p-3 rounded">{JSON.stringify(result.line_items, null, 2)}</pre></details>
         <details><summary className="cursor-pointer font-semibold">Outlier lines ({result.outliers?.length ?? 0})</summary><pre className="mt-3 max-h-64 overflow-auto text-xs bg-slate-50 p-3 rounded">{JSON.stringify(result.outliers, null, 2)}</pre></details>
       </section>}
-      {negotiation && <section className="bg-white rounded-xl border border-slate-200 p-6"><h2 className="text-lg font-bold">Negotiation plan</h2><p className="text-sm text-slate-500 mt-1">{negotiation.counter_lines} of {negotiation.total_lines} lines flagged · projected excess exposure ₦{Number(negotiation.projected_exposure).toLocaleString()}</p><p className="mt-3 text-sm">Top counteroffer lines are ranked by annual exposure. Review and approve before sending to the provider.</p></section>}
+      {result && analysisRequest && <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <h2 className="text-lg font-bold">Target Relative Band</h2>
+        {result.exception || !['D', 'C', 'B', 'A', 'Special'].includes(relativeBand) || result.tariff_index == null
+          ? <p className="text-sm text-amber-900">Negotiation needs a bandable official result without an exception. Resolve the coverage or tariff issues and run analysis again.</p>
+          : <>
+            <p className="text-sm text-slate-600">Choose a cheaper band than the current Official Relative Band {relativeBand}. The plan uses the provider or CSV from the last successful analysis; run analysis again after changing inputs.</p>
+            {relativeBand === 'D' && <p className="text-sm text-slate-600">D is already the cheapest relative band. No cheaper target is available.</p>}
+            <label className="block text-sm font-medium">Target Relative Band
+              <select required className="mt-1 block w-full max-w-xs border rounded-lg p-2" value={targetBand} disabled={busy || relativeBand === 'D'} onChange={e => { setTargetBand(e.target.value as TargetBand | ''); setNegotiation(null) }}>
+                <option value="">Select a target</option>
+                {targetBands.map(band => <option key={band} value={band} disabled={!canTargetBand(relativeBand, result.exception, band)}>{band}</option>)}
+              </select>
+            </label>
+            <Button variant="secondary" loading={busy} disabled={busy || !canTargetBand(relativeBand, result.exception, targetBand)} onClick={generateNegotiation}>Generate negotiation plan</Button>
+          </>}
+      </section>}
+      {negotiation && <NegotiationPlan plan={negotiation} />}
     </main>
   </>
 }
