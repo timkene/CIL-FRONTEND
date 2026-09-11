@@ -37,7 +37,8 @@ export default function TariffPage() {
   const [negotiation, setNegotiation] = useState<NegotiationResult | null>(null)
   const [targetBand, setTargetBand] = useState<TargetBand | ''>('')
   const [analysisRequest, setAnalysisRequest] = useState<AnalysisRequest | null>(null)
-  const [error, setError] = useState('')
+  const [analysisError, setAnalysisError] = useState('')
+  const [negotiationError, setNegotiationError] = useState('')
   const [busy, setBusy] = useState(false)
   async function searchProviders() {
     if (!providerSearch.trim()) return
@@ -53,11 +54,11 @@ export default function TariffPage() {
   }
 
   async function analyse() {
-    setNegotiation(null); setTargetBand(''); setAnalysisRequest(null)
+    setNegotiation(null); setTargetBand(''); setAnalysisRequest(null); setNegotiationError('')
     if (!providerId && /^\d+$/.test(providerSearch.trim())) setProviderId(providerSearch.trim())
     const effectiveProviderId = providerId || providerSearch.trim()
-    if ((!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) && !tariff) return setError('Select a provider, or upload a new provider tariff CSV.')
-    setBusy(true); setError(''); setResult(null)
+    if ((!effectiveProviderId || !/^\d+$/.test(effectiveProviderId)) && !tariff) return setAnalysisError('Select a provider, or upload a new provider tariff CSV.')
+    setBusy(true); setAnalysisError(''); setResult(null)
     try {
       const body = { provider_id: effectiveProviderId || undefined, current_band: currentBand || null,
         provider_tariff: tariff ? await readCsv(tariff) : undefined }
@@ -65,19 +66,19 @@ export default function TariffPage() {
       if (!res.ok) throw new Error(await res.text())
       setResult(await res.json())
       setAnalysisRequest(body)
-    } catch (e) { setError(e instanceof Error ? e.message : 'Analysis failed') }
+    } catch (e) { setAnalysisError(e instanceof Error ? e.message : 'Analysis failed') }
     finally { setBusy(false) }
   }
 
   async function generateNegotiation() {
     if (busy || !analysisRequest || !canTargetBand(relativeBand, result?.exception, targetBand)) return
-    setBusy(true); setError(''); setNegotiation(null)
+    setBusy(true); setNegotiationError(''); setNegotiation(null)
     try {
       const body = { ...analysisRequest, target_relative_band: targetBand }
-      const res = await fetch(`${API}/api/v1/tariff-banding/negotiate-v2`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const res = await fetch('/api/v1/tariff-banding/negotiate-v2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error(await res.text())
       setNegotiation(await res.json())
-    } catch (e) { setError(e instanceof Error ? e.message : 'Negotiation failed') }
+    } catch (e) { setNegotiationError(e instanceof Error ? e.message : 'Negotiation failed') }
     finally { setBusy(false) }
   }
 
@@ -105,7 +106,7 @@ export default function TariffPage() {
           <label className="text-sm font-medium">Tariff or Migration CSV (optional)<input className="mt-1 block w-full text-sm" type="file" accept=".csv,.xlsx" onChange={e => setTariff(e.target.files?.[0])} /></label>
         </div>
         <div className="flex flex-wrap gap-3"><Button variant="primary" loading={busy} onClick={analyse}>Run analysis</Button></div>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {analysisError && <p className="text-sm text-rose-600">{analysisError}</p>}
       </section>
       {result && <section className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
@@ -155,12 +156,14 @@ export default function TariffPage() {
             <p className="text-sm text-slate-600">Choose a cheaper band than the current Official Relative Band {relativeBand}. The plan uses the provider or CSV from the last successful analysis; run analysis again after changing inputs.</p>
             {relativeBand === 'D' && <p className="text-sm text-slate-600">D is already the cheapest relative band. No cheaper target is available.</p>}
             <label className="block text-sm font-medium">Target Relative Band
-              <select required className="mt-1 block w-full max-w-xs border rounded-lg p-2" value={targetBand} disabled={busy || relativeBand === 'D'} onChange={e => { setTargetBand(e.target.value as TargetBand | ''); setNegotiation(null) }}>
+              <select required className="mt-1 block w-full max-w-xs border rounded-lg p-2" value={targetBand} disabled={busy || relativeBand === 'D'} onChange={e => { setTargetBand(e.target.value as TargetBand | ''); setNegotiation(null); setNegotiationError('') }}>
                 <option value="">Select a target</option>
                 {targetBands.map(band => <option key={band} value={band} disabled={!canTargetBand(relativeBand, result.exception, band)}>{band}</option>)}
               </select>
             </label>
             <Button variant="secondary" loading={busy} disabled={busy || !canTargetBand(relativeBand, result.exception, targetBand)} onClick={generateNegotiation}>Generate negotiation plan</Button>
+            {busy && <p role="status" className="text-sm text-slate-600">Generating negotiation plan. A full-core request can take about a minute. Do not close this page.</p>}
+            {negotiationError && <p className="text-sm text-rose-600">{negotiationError}</p>}
           </>}
       </section>}
       {negotiation && <NegotiationPlan plan={negotiation} />}

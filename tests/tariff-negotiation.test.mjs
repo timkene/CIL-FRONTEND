@@ -73,6 +73,16 @@ test('exception response does not present offers or a misleading projection', ()
   assert.ok(!html.includes('TEST1'))
 })
 
+test('negotiation page does not abort the live V2 request and keeps generate disabled while busy', () => {
+  const source = fs.readFileSync(new URL('../app/tariff/page.tsx', import.meta.url), 'utf8')
+  assert.equal(source.includes('AbortSignal'), false)
+  assert.equal(/\btimeout\s*:/.test(source), false)
+  assert.ok(source.includes("fetch('/api/v1/tariff-banding/negotiate-v2'"))
+  assert.equal(source.includes('${API}/api/v1/tariff-banding/negotiate'), false)
+  assert.ok(source.includes('disabled={busy || !canTargetBand'))
+  assert.ok(source.includes('Generating negotiation plan. A full-core request can take about a minute.'))
+})
+
 test('V2 proxy forwards target body and upstream errors without contacting a service', async () => {
   const source = fs.readFileSync(new URL('../app/api/v1/tariff-banding/negotiate-v2/route.ts', import.meta.url), 'utf8')
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
@@ -80,7 +90,8 @@ test('V2 proxy forwards target body and upstream errors without contacting a ser
   let fail = false
   let captured
   vm.runInNewContext(compiled, {
-    exports, require, process: { env: { TARIFF_API_URL: 'http://fixture.invalid/' } },
+    exports, require, AbortSignal,
+    process: { env: { TARIFF_API_URL: 'http://fixture.invalid/' } },
     fetch: async (url, options) => {
       captured = { url, options }
       if (fail) throw new Error('offline')
@@ -92,6 +103,8 @@ test('V2 proxy forwards target body and upstream errors without contacting a ser
   assert.equal(captured.url, 'http://fixture.invalid/api/v1/tariff-banding/negotiate-v2')
   assert.equal(captured.options.body, body)
   assert.equal(captured.options.cache, 'no-store')
+  assert.ok(captured.options.signal instanceof AbortSignal)
+  assert.equal(exports.maxDuration, 300)
   assert.equal(response.status, 422)
   assert.deepEqual(await response.json(), { detail: 'invalid target' })
   fail = true
