@@ -75,7 +75,7 @@ export default function TariffPage() {
     setBusy(true); setNegotiationError(''); setNegotiation(null)
     try {
       const body = { ...analysisRequest, target_relative_band: targetBand }
-      const res = await fetch('/api/v1/tariff-banding/negotiate-v2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const res = await fetch(`${API}/api/v1/tariff-banding/negotiate-v2`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error(await res.text())
       setNegotiation(await res.json())
     } catch (e) { setNegotiationError(e instanceof Error ? e.message : 'Negotiation failed') }

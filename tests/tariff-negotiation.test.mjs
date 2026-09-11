@@ -73,12 +73,14 @@ test('exception response does not present offers or a misleading projection', ()
   assert.ok(!html.includes('TEST1'))
 })
 
-test('negotiation page does not abort the live V2 request and keeps generate disabled while busy', () => {
+test('negotiation page calls the tariff backend directly with no client abort', () => {
   const source = fs.readFileSync(new URL('../app/tariff/page.tsx', import.meta.url), 'utf8')
   assert.equal(source.includes('AbortSignal'), false)
   assert.equal(/\btimeout\s*:/.test(source), false)
-  assert.ok(source.includes("fetch('/api/v1/tariff-banding/negotiate-v2'"))
-  assert.equal(source.includes('${API}/api/v1/tariff-banding/negotiate'), false)
+  assert.ok(source.includes('`${API}/api/v1/tariff-banding/negotiate-v2`'))
+  assert.ok(source.includes('`${API}/api/v1/tariff-banding/analyze`'))
+  assert.equal(source.includes("fetch('/api/v1/tariff-banding/negotiate-v2'"), false)
+  assert.equal(source.includes('/api/v1/tariff-banding/negotiate`'), false)
   assert.ok(source.includes('disabled={busy || !canTargetBand'))
   assert.ok(source.includes('Generating negotiation plan. A full-core request can take about a minute.'))
 })
@@ -90,7 +92,7 @@ test('V2 proxy forwards target body and upstream errors without contacting a ser
   let fail = false
   let captured
   vm.runInNewContext(compiled, {
-    exports, require, AbortSignal,
+    exports, require,
     process: { env: { TARIFF_API_URL: 'http://fixture.invalid/' } },
     fetch: async (url, options) => {
       captured = { url, options }
@@ -103,8 +105,8 @@ test('V2 proxy forwards target body and upstream errors without contacting a ser
   assert.equal(captured.url, 'http://fixture.invalid/api/v1/tariff-banding/negotiate-v2')
   assert.equal(captured.options.body, body)
   assert.equal(captured.options.cache, 'no-store')
-  assert.ok(captured.options.signal instanceof AbortSignal)
-  assert.equal(exports.maxDuration, 300)
+  assert.equal(captured.options.signal, undefined)
+  assert.equal(exports.maxDuration, undefined)
   assert.equal(response.status, 422)
   assert.deepEqual(await response.json(), { detail: 'invalid target' })
   fail = true
