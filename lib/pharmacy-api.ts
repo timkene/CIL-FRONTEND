@@ -1,4 +1,4 @@
-import type { PharmacyOrder, SearchResult, Enrollee, Medication, Provider } from './pharmacy-types'
+import type { PharmacyOrder, PharmacyAggregator, SearchResult, Enrollee, Medication, Provider } from './pharmacy-types'
 
 const BASE = process.env.NEXT_PUBLIC_PHARMACY_API_URL ?? 'https://pharmacy-dispatch-api.onrender.com'
 const SERVICE_KEY = process.env.NEXT_PUBLIC_PHARMACY_SERVICE_KEY ?? ''
@@ -56,8 +56,25 @@ export const approvePharmacyOrder = (id: string) =>
 export const closePharmacyBidding = (id: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/close-bidding`, { method: 'POST' })
 
-export const rejectPharmacyOrder = (id: string) =>
-  pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/reject`, { method: 'POST' })
+export const rejectPharmacyOrder = async (id: string, comment: string) => {
+  if (!comment.trim()) throw new Error('A denial comment is required.')
+  return pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ comment: comment.trim() }),
+  })
+}
+
+export const listPharmacyAggregators = async () => {
+  const data = await pharmacyFetch<PharmacyAggregator[] | { aggregators?: PharmacyAggregator[] }>('/api/aggregators')
+  if (Array.isArray(data)) return data
+  return Array.isArray(data.aggregators) ? data.aggregators : []
+}
+
+export const assignPharmacyOrder = (id: string, aggregatorId: string) =>
+  pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/assign`, {
+    method: 'POST',
+    body: JSON.stringify({ aggregatorId }),
+  })
 
 export const staffConfirmPharmacyReceipt = (id: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/staff-confirm`, { method: 'POST' })

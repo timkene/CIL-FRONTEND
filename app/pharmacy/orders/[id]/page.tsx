@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { ReviewFlagsPanel } from '@/components/pharmacy/ReviewFlagsPanel'
+import { ReviewActions } from '@/components/pharmacy/ReviewActions'
 import { BiddingTable } from '@/components/pharmacy/BiddingTable'
 import { CountdownTimer } from '@/components/pharmacy/CountdownTimer'
 import { StatusChip } from '@/components/pharmacy/StatusChip'
@@ -12,7 +14,7 @@ import type { PharmacyPARecord, PharmacyMedicationAmount } from '@/lib/klaire-ap
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   pending_review: 'Pending Review',
-  rejected: 'Rejected',
+  rejected: 'Denied',
   bidding: 'Bidding Active',
   clearline_price_review: 'Clearline Price Review',
   awaiting_fulfillment: 'Awaiting Acceptance',
@@ -206,13 +208,18 @@ export default function PharmacyOrderPage() {
         )}
       </div>
 
+      {(status === 'pending_review' || status === 'rejected') && (
+        <ReviewFlagsPanel flags={order.reviewFlags} />
+      )}
+
       {/* STATE 0a: Pending Review */}
       {status === 'pending_review' && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-5">
           <p className="text-amber-800 font-bold text-base mb-1">Awaiting Pharmacist Review</p>
           <p className="text-sm text-slate-500">
-            This prescription is in the holding queue. An authorised staff member must approve it before it is sent to aggregators for bidding.
+            This prescription is in the holding queue. An authorised staff member can approve it for bidding, deny with a comment, or send directly to an aggregator.
           </p>
+          <div className="mt-3"><ReviewActions key={`${order.id}-${status}`} order={order} onComplete={load} /></div>
           <div className="mt-3 flex gap-3">
             <Link
               href={`/pharmacy/intake/new?editId=${order.id}`}
@@ -230,10 +237,17 @@ export default function PharmacyOrderPage() {
       {/* STATE 0b: Rejected */}
       {status === 'rejected' && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg p-5">
-          <p className="text-rose-700 font-bold text-base mb-1">Prescription Rejected</p>
+          <p className="text-rose-700 font-bold text-base mb-1">Prescription Denied</p>
           <p className="text-sm text-slate-500">
             The pharmacist has flagged an issue with this prescription. Edit and resubmit it for another review.
           </p>
+          <p className="mt-3 text-sm text-rose-700 whitespace-pre-wrap">Denial comment: {order.denialComment || 'No comment recorded.'}</p>
+          {order.deniedBy && (
+            <p className="text-xs text-slate-500">Denied by: {order.deniedBy.name || order.deniedBy.userId || 'Staff'}</p>
+          )}
+          {order.deniedAt && (
+            <p className="text-xs text-slate-500">Denied at: {new Date(order.deniedAt).toLocaleString()}</p>
+          )}
           <div className="mt-3">
             <Link
               href={`/pharmacy/intake/new?editId=${order.id}`}
@@ -348,6 +362,9 @@ export default function PharmacyOrderPage() {
       {/* STATE 2: Winner selected — awaiting acceptance */}
       {status === 'awaiting_fulfillment' && (
         <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-2">
+          {order.assignmentType === 'direct' && (
+            <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">Sent directly — bidding was skipped</p>
+          )}
           <div className="flex items-center gap-3 flex-wrap">
             <StatusChip status="pending" label="Awaiting Acceptance" />
             <span className="text-sm font-bold text-slate-900">Winner: {order.winnerName}</span>
