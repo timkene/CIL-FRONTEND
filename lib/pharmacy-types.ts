@@ -60,6 +60,47 @@ export type OrderStatus =
   | 'completed'
   | 'not_received'
 
+export interface ReviewFlags {
+  checked_at: string | null
+  request_date: string | null
+  enrollee_id?: string | null
+  codes: string[]
+  enrollee_status: {
+    isterminated: boolean | null
+    terminationDate: string | null
+    flagged: boolean
+  }
+  medication_benefit: {
+    limit_amount: number | null
+    utilized_amount: number | null
+    remaining_amount: number | null
+    benefit_name: string | null
+    flagged: boolean
+    error?: string | null
+    checked_at?: string | null
+  }
+  recent_medication: {
+    from_date: string | null
+    to_date: string | null
+    flagged: boolean
+    items: Array<{
+      date: string | null
+      procedure_code: string | null
+      description: string | null
+      provider: string | null
+      amount: number | null
+    }>
+    error?: string | null
+  }
+}
+
+export interface PharmacyAggregator {
+  id: string
+  companyName: string
+  contactName: string
+  email: string
+}
+
 export interface PharmacyOrder {
   id: string
   intakeId: string
@@ -78,6 +119,11 @@ export interface PharmacyOrder {
   createdAt: string
   completedAt?: string
   bidCount?: number
+  reviewFlags?: ReviewFlags | null
+  assignmentType?: string | null
+  denialComment?: string | null
+  deniedBy?: { userId?: string; name?: string } | null
+  deniedAt?: string | null
 }
 
 export interface SearchResult {
