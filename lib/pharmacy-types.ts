@@ -50,6 +50,12 @@ export interface Bid {
 }
 
 export type OrderStatus =
+  | 'direct_quote_requested'
+  | 'direct_price_review'
+  | 'direct_reassignment'
+  | 'fulfilled'
+  | 'cancelled'
+  | 'post_fulfilment_recalled'
   | 'pending_review'
   | 'rejected'
   | 'bidding'
@@ -112,7 +118,7 @@ export interface PharmacyOrder {
   bids: Bid[]
   winnerId?: string
   winnerName?: string
-  winnerTotalPrice?: number
+  winnerTotalPrice?: number | null
   fulfillmentType?: 'delivered' | 'picked_up'
   deliveryFee?: number
   biddingEndsAt?: string
@@ -120,6 +126,16 @@ export interface PharmacyOrder {
   completedAt?: string
   bidCount?: number
   reviewFlags?: ReviewFlags | null
+  version?: number
+  assignmentVersion?: number
+  directQuote?: { totalPrice: number; submittedAt?: string; aggregatorId?: string; assignmentVersion?: number } | null
+  priceApprovedAt?: string | null
+  acceptedAt?: string | null
+  fulfilledAt?: string | null
+  cancelledAt?: string | null
+  recalledAt?: string | null
+  history?: PharmacyHistoryEvent[] | null
+  paGeneration?: { available: boolean; status: string } | null
   assignmentType?: string | null
   denialComment?: string | null
   deniedBy?: { userId?: string; name?: string } | null
@@ -244,4 +260,18 @@ export interface AftercareStats {
   provider_rating_count?: number
   clearline_rating_count?: number
   nps_count?: number
+}
+
+export interface PharmacyHistoryEvent {
+  eventType: string
+  timestamp?: string
+  actorId?: string
+  actorName?: string
+  actorRole?: string
+  reason?: string | null
+  oldValues?: Record<string, unknown>
+  newValues?: Record<string, unknown>
+  aggregatorId?: string | null
+  aggregatorName?: string | null
+  assignmentVersion?: number
 }

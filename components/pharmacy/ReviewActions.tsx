@@ -1,6 +1,6 @@
 'use client'
 import { useRef, useState } from 'react'
-import { approvePharmacyOrder, rejectPharmacyOrder, listPharmacyAggregators, assignPharmacyOrder } from '@/lib/pharmacy-api'
+import { approvePharmacyOrder, rejectPharmacyOrder, listPharmacyAggregators, assignPharmacyOrder, pharmacyMutationError } from '@/lib/pharmacy-api'
 import type { PharmacyAggregator, PharmacyOrder } from '@/lib/pharmacy-types'
 
 export function ReviewActions({ order, onComplete }: { order: PharmacyOrder; onComplete: () => Promise<void> }) {
@@ -11,7 +11,7 @@ export function ReviewActions({ order, onComplete }: { order: PharmacyOrder; onC
   const [aggregatorId, setAggregatorId] = useState('')
   const [finished, setFinished] = useState(false)
 
-  if (order.status !== 'pending_review' || finished) return null
+  if (!['pending_review', 'direct_reassignment'].includes(order.status) || finished) return null
 
   const run = async (action: () => Promise<unknown>, completes = true) => {
     if (locked.current) return
@@ -25,7 +25,7 @@ export function ReviewActions({ order, onComplete }: { order: PharmacyOrder; onC
         setFinished(true)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Review action failed. Please try again.')
+      setError(await pharmacyMutationError(err, onComplete))
     } finally {
       locked.current = false
       setBusy(false)
@@ -47,8 +47,8 @@ export function ReviewActions({ order, onComplete }: { order: PharmacyOrder; onC
   return <div className="space-y-3">
     {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
     <div className="flex flex-wrap gap-3">
-      <button disabled={busy} onClick={() => void run(() => approvePharmacyOrder(order.id))} className={`${buttonClass} text-emerald-600`}>Approve</button>
-      <button disabled={busy} onClick={deny} className={`${buttonClass} text-rose-600`}>Deny</button>
+      {order.status === 'pending_review' && <><button disabled={busy} onClick={() => void run(() => approvePharmacyOrder(order.id))} className={`${buttonClass} text-emerald-600`}>Approve</button>
+      <button disabled={busy} onClick={deny} className={`${buttonClass} text-rose-600`}>Deny</button></>}
       <button disabled={busy} onClick={() => void run(async () => { setAggregators(await listPharmacyAggregators()); setAggregatorId('') }, false)} className={`${buttonClass} text-[#137fec]`}>Send directly</button>
       {busy && <span role="status" className="text-sm text-slate-500">Please wait…</span>}
     </div>
@@ -65,7 +65,7 @@ export function ReviewActions({ order, onComplete }: { order: PharmacyOrder; onC
       <div className="flex gap-3">
         <button disabled={busy || !selected} onClick={() => {
           if (selected && window.confirm(`Send order ${order.intakeId} directly to ${selected.companyName}?`)) {
-            void run(() => assignPharmacyOrder(order.id, selected.id))
+            void run(() => assignPharmacyOrder(order.id, selected.id, order.version ?? 0))
           }
         }} className="bg-[#137fec] text-white rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-40">Confirm send</button>
         <button disabled={busy} onClick={() => { setAggregators(null); setAggregatorId('') }} className={`${buttonClass} text-slate-600`}>Cancel</button>

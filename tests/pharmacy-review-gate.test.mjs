@@ -80,6 +80,7 @@ function actionsHarness(overrides = {}) {
   const state = []
   const calls = []
   const api = Object.fromEntries(['approvePharmacyOrder', 'rejectPharmacyOrder', 'assignPharmacyOrder'].map(name => [name, async (...args) => { calls.push([name, ...args]) }]))
+  api.pharmacyMutationError = async err => err.message
   api.listPharmacyAggregators = async () => [{ id: 'a1', companyName: 'Sample aggregator', contactName: 'Contact', email: 'sample@example.test' }]
   const hooks = {
     useState(initial) { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], value => { state[i] = value }] },
@@ -87,7 +88,7 @@ function actionsHarness(overrides = {}) {
   }
   const window = { prompt: () => null, confirm: () => false, ...overrides }
   const { ReviewActions } = load('components/pharmacy/ReviewActions.tsx', { window, require: name => name === 'react' ? hooks : name === '@/lib/pharmacy-api' ? api : dependency(name) })
-  function render(status = 'pending_review') { cursor = 0; return ReviewActions({ order: { id: 'o1', intakeId: 'I1', status }, onComplete: async () => calls.push(['reload']) }) }
+  function render(status = 'pending_review', version = 0) { cursor = 0; return ReviewActions({ order: { id: 'o1', intakeId: 'I1', status, version }, onComplete: async () => calls.push(['reload']) }) }
   function nodes(node) { return !node || typeof node !== 'object' ? [] : [node, ...[node.props?.children].flat(Infinity).flatMap(nodes)] }
   const button = (tree, label) => nodes(tree).find(n => n.type === 'button' && n.props.children === label)
   return { render, button, nodes, calls, window, api }
@@ -121,7 +122,7 @@ test('direct assignment requires selection and confirmation; approve only exists
   h.window.confirm = () => true
   h.button(h.render(), 'Confirm send').props.onClick()
   await settle()
-  assert.deepEqual(h.calls, [['assignPharmacyOrder', 'o1', 'a1'], ['reload']])
+  assert.deepEqual(h.calls, [['assignPharmacyOrder', 'o1', 'a1', 0], ['reload']])
   const approve = actionsHarness()
   approve.button(approve.render(), 'Approve').props.onClick()
   await settle()
@@ -136,4 +137,16 @@ test('failed actions show errors and remain retryable', async () => {
   assert.ok(h.nodes(h.render()).some(n => n.props?.role === 'alert' && n.props.children === 'Request failed'))
   assert.equal(h.button(h.render(), 'Approve').props.disabled, false)
   assert.deepEqual(h.calls, [])
+})
+
+
+test('reassignment selector sends the refreshed order version and no competitive approval', async () => {
+  const h = actionsHarness({ confirm: () => true })
+  assert.equal(h.button(h.render('direct_reassignment', 9), 'Approve'), undefined)
+  h.button(h.render('direct_reassignment', 9), 'Send directly').props.onClick()
+  await settle()
+  h.nodes(h.render('direct_reassignment', 9)).find(n => n.type === 'select').props.onChange({ target: { value: 'a1' } })
+  h.button(h.render('direct_reassignment', 10), 'Confirm send').props.onClick()
+  await settle()
+  assert.deepEqual(h.calls, [['assignPharmacyOrder', 'o1', 'a1', 10], ['reload']])
 })
