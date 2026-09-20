@@ -4,12 +4,18 @@ import Link from 'next/link'
 import { ReviewFlagsPanel } from '@/components/pharmacy/ReviewFlagsPanel'
 import { ReviewActions } from '@/components/pharmacy/ReviewActions'
 import { StatusChip } from '@/components/pharmacy/StatusChip'
-import { getPharmacyOrders, deletePharmacyOrder, PharmacyApiError } from '@/lib/pharmacy-api'
+import { getPharmacyOrders, PharmacyApiError } from '@/lib/pharmacy-api'
 import type { PharmacyOrder, OrderStatus } from '@/lib/pharmacy-types'
 
 const PAGE_SIZE = 20
 
 const STATUS_MAP: Record<OrderStatus, { status: 'active' | 'pending' | 'error' | 'info'; label: string }> = {
+  direct_quote_requested: { status: 'info', label: 'Waiting for pharmacy price' },
+  direct_price_review: { status: 'info', label: 'Direct Price Review' },
+  direct_reassignment: { status: 'info', label: 'Direct Reassignment' },
+  fulfilled: { status: 'info', label: 'Fulfilled' },
+  cancelled: { status: 'info', label: 'Cancelled' },
+  post_fulfilment_recalled: { status: 'info', label: 'Post-fulfilment Recalled' },
   pending_review:        { status: 'pending', label: 'Pending Review' },
   rejected:              { status: 'error',   label: 'Denied' },
   clearline_price_review: { status: 'pending', label: 'Clearline Price Review' },
@@ -49,7 +55,6 @@ export default function PharmacyPage() {
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
   const [page, setPage] = useState(0)
-  const [deleting, setDeleting] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -57,30 +62,18 @@ export default function PharmacyPage() {
       setOrders(data)
     } catch (err) {
       setToast(err instanceof PharmacyApiError ? err.message : 'Failed to load orders')
+      throw err
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { void load().catch(() => {}) }, [load])
 
   useEffect(() => {
-    const id = setInterval(load, 20_000)
+    const id = setInterval(() => { void load().catch(() => {}) }, 20_000)
     return () => clearInterval(id)
   }, [load])
-
-  const handleDelete = async (id: string, intakeId: string) => {
-    if (!window.confirm(`Delete order ${intakeId}? This cannot be undone.`)) return
-    setDeleting(id)
-    try {
-      await deletePharmacyOrder(id)
-      setOrders(prev => prev.filter(o => o.id !== id))
-    } catch (err) {
-      setToast(err instanceof PharmacyApiError ? err.message : 'Failed to delete order')
-    } finally {
-      setDeleting(null)
-    }
-  }
 
   const today = new Date().toDateString()
   const pendingReview = orders.filter(o => o.status === 'pending_review' || o.status === 'rejected')
@@ -218,13 +211,7 @@ export default function PharmacyPage() {
                             >
                               View
                             </Link>
-                            <button
-                              onClick={() => handleDelete(order.id, order.intakeId)}
-                              disabled={deleting === order.id}
-                              className="text-sm text-rose-500 hover:underline font-semibold disabled:opacity-40"
-                            >
-                              {deleting === order.id ? 'Deleting…' : 'Delete'}
-                            </button>
+
                           </div>
                         </td>
                       </tr>

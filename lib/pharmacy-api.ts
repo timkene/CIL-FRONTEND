@@ -1,7 +1,6 @@
 import type { PharmacyOrder, PharmacyAggregator, SearchResult, Enrollee, Medication, Provider } from './pharmacy-types'
 
-const BASE = process.env.NEXT_PUBLIC_PHARMACY_API_URL ?? 'https://pharmacy-dispatch-api.onrender.com'
-const SERVICE_KEY = process.env.NEXT_PUBLIC_PHARMACY_SERVICE_KEY ?? ''
+const BASE = '/api/pharmacy'
 
 export class PharmacyApiError extends Error {
   constructor(public status: number, message: string) {
@@ -13,14 +12,17 @@ export class PharmacyApiError extends Error {
 async function pharmacyFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      'X-Service-Key': SERVICE_KEY,
       ...init?.headers,
     },
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/pharmacy/login') {
+      window.location.assign('/pharmacy/login')
+    }
     throw new PharmacyApiError(
       res.status,
       (data as { message?: string; detail?: string }).message
@@ -47,9 +49,6 @@ export const createPharmacyOrder = (payload: {
     body: JSON.stringify(payload),
   })
 
-export const deletePharmacyOrder = (id: string) =>
-  pharmacyFetch<{ success: boolean }>(`/api/orders/${id}`, { method: 'DELETE' })
-
 export const approvePharmacyOrder = (id: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/approve`, { method: 'POST' })
 
@@ -70,10 +69,10 @@ export const listPharmacyAggregators = async () => {
   return Array.isArray(data.aggregators) ? data.aggregators : []
 }
 
-export const assignPharmacyOrder = (id: string, aggregatorId: string) =>
+export const assignPharmacyOrder = (id: string, aggregatorId: string, expectedVersion?: number) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/assign`, {
     method: 'POST',
-    body: JSON.stringify({ aggregatorId }),
+    body: JSON.stringify({ aggregatorId, expectedVersion }),
   })
 
 export const staffConfirmPharmacyReceipt = (id: string) =>
@@ -178,3 +177,40 @@ export const getPharmacyMemberDetail = async (enrolleeId: string): Promise<Membe
     return EMPTY_DETAIL
   }
 }
+
+export interface LifecycleResult { success: boolean; status: import('./pharmacy-types').OrderStatus; version: number; assignmentVersion: number }
+export type StaffLifecycleAction = 'direct-approve' | 'direct-deny' | 'recall' | 'adjust-price' | 'cancel'
+export type StaffLifecycleRequest =
+  | { action: 'direct-approve'; expectedVersion: number; adjusted_price?: number; reason?: string }
+  | { action: 'direct-deny' | 'recall' | 'cancel'; expectedVersion: number; reason: string }
+  | { action: 'adjust-price'; expectedVersion: number; totalPrice: number; reason: string }
+
+export async function mutatePharmacyLifecycle(id: string, request: StaffLifecycleRequest) {
+  const { action, ...body } = request
+  const price = 'totalPrice' in body ? body.totalPrice : 'adjusted_price' in body ? body.adjusted_price : undefined
+  if (price !== undefined && (!Number.isFinite(price) || price <= 0)) throw new Error('Price must be a positive finite Naira amount.')
+  if (action !== 'direct-approve' || price !== undefined) {
+    if (!body.reason?.trim() || body.reason.trim().length > 2000) throw new Error('A reason of 1–2,000 characters is required.')
+  }
+  return pharmacyFetch<LifecycleResult>(`/api/orders/${id}/${action}`, {
+    method: 'POST', body: JSON.stringify({ ...body, ...('reason' in body ? { reason: body.reason?.trim() } : {}) }),
+  })
+}
+
+export async function pharmacyMutationError(error: unknown, refresh: () => Promise<void>): Promise<string> {
+  if (error instanceof PharmacyApiError && error.status === 409) {
+    try { await refresh() } catch { return 'This order changed. Refresh failed; reload the order before trying again.' }
+    return 'This order was updated by someone else. The latest information has been loaded. Review it before trying again.'
+  }
+  return error instanceof Error ? error.message : 'Action failed. Please try again.'
+}
+
+export interface PharmacyStaffIdentity { userId: string; name: string; email: string }
+
+export const loginPharmacyStaff = (email: string, password: string) =>
+  pharmacyFetch<{ success: boolean; user: PharmacyStaffIdentity }>('/auth/login', {
+    method: 'POST', body: JSON.stringify({ email, password }),
+  })
+
+export const logoutPharmacyStaff = () =>
+  pharmacyFetch<{ success: boolean }>('/auth/logout', { method: 'POST' })
