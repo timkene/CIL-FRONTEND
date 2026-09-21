@@ -3,11 +3,13 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Button, Badge, useToast } from '@/components/ui'
 import { nhiaFetch } from '@/lib/nhia-fetch'
+import { claimSelectionKey, selectableClaims, claimsQuery, reversalReasonValid, paymentError, withClaimsRefresh } from '@/lib/claims-selection'
 
 const API = process.env.NEXT_PUBLIC_NHIA_API_URL || 'http://localhost:8005'
 
 interface Claim {
   batch_id: string
+  request_id?: string | null
   batch_name: string
   encounter_date: string
   accepted_at: string
@@ -34,9 +36,10 @@ interface Claim {
   adjusted_quantity: number | null
   paid: boolean
   paid_date: string | null
+  legacy_ambiguous?: boolean
 }
 
-type ClaimKey = { batch_id: string; enrollee_id: string; procedure_code: string }
+type ClaimKey = { batch_id: string; request_id?: string; enrollee_id: string; procedure_code: string }
 
 function fmtMoney(n: number | null) {
   if (!n) return '—'
@@ -47,7 +50,11 @@ function fmtDate(s: string | null) {
   return s.slice(0, 10)
 }
 function claimKey(c: Claim): string {
-  return `${c.batch_id}::${c.enrollee_id}::${c.procedure_code}`
+  return claimSelectionKey(c)
+}
+function apiKey(c: Claim): ClaimKey {
+  return { batch_id: c.batch_id, ...(c.request_id ? { request_id: c.request_id } : {}),
+    enrollee_id: c.enrollee_id, procedure_code: c.procedure_code }
 }
 
 export default function NHIAClaimsPage() {
@@ -69,16 +76,17 @@ export default function NHIAClaimsPage() {
   const [showPay, setShowPay]     = useState(false)
   const [payDate, setPayDate]     = useState(new Date().toISOString().slice(0, 10))
   const [paying, setPaying]       = useState(false)
+  const [showUnpay, setShowUnpay] = useState(false)
+  const [unpayReason, setUnpayReason] = useState('')
+  const [unpaying, setUnpaying] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
-      if (decision !== 'ALL') params.set('decision', decision)
-      if (search)   params.set('search', search)
-      if (dateFrom) params.set('date_from', dateFrom)
-      if (dateTo)   params.set('date_to', dateTo)
+      const params = claimsQuery(decision, search, dateFrom, dateTo)
+      params.set('page', String(page))
+      params.set('limit', String(limit))
       const res  = await fetch(`${API}/api/v1/nhia/claims?${params}`)
       const data = await res.json()
       setClaims(data.claims || [])
@@ -110,38 +118,66 @@ export default function NHIAClaimsPage() {
     })
   }
 
-  const approvableOnPage = claims.filter(c => c.decision === 'APPROVE' && !c.paid)
+  const selectableOnPage = selectableClaims(claims, decision)
 
   function selectAllOnPage() {
-    setSelected(new Set(approvableOnPage.map(claimKey)))
+    setSelected(new Set(selectableOnPage.map(claimKey)))
+  }
+
+  function selectedKeys(): ClaimKey[] | null {
+    const keyMap = new Map(claims.map(c => [claimKey(c), c]))
+    const rows = [...selected].map(k => keyMap.get(k))
+    if (rows.some(row => !row || row.legacy_ambiguous)) return null
+    return rows.map(row => apiKey(row as Claim))
+  }
+
+  async function submitPayment(action: 'pay' | 'unpay') {
+    const keys = selectedKeys()
+    if (!keys || keys.length === 0) {
+      toast.error('Selection is stale. Claims were refreshed; select the remaining claims again.')
+      await load()
+      return
+    }
+    const isPay = action === 'pay'
+    if (isPay) setPaying(true)
+    else setUnpaying(true)
+    try {
+      await withClaimsRefresh(async () => {
+      const res = await nhiaFetch(`${API}/api/v1/nhia/claims/${action}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isPay ? { claim_keys: keys, paid_date: payDate }
+                                  : { claim_keys: keys, reason: unpayReason.trim() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const detail = data?.detail
+        const paid = detail && typeof detail === 'object' && !Array.isArray(detail)
+          ? detail.paid_claims?.length || 0 : 0
+        throw new Error(`${paymentError(detail)}${paid ? ` ${paid} claim(s) were paid before the failure.` : ''} Server state was refreshed. Review the remaining selected claims before retrying.`)
+      }
+      toast.success(isPay ? `${data.paid} claim(s) marked as paid` : `${data.reversed} payment(s) reversed`)
+      if (isPay) setShowPay(false)
+      else { setShowUnpay(false); setUnpayReason('') }
+      }, load)
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Payment operation failed. Review refreshed Claims.')
+    } finally {
+      if (isPay) setPaying(false)
+      else setUnpaying(false)
+    }
   }
 
   async function handlePay() {
-    if (selected.size === 0) return
     if (!payDate) { toast.error('Enter a payment date'); return }
-    setPaying(true)
-    try {
-      const keyMap = new Map(claims.map(c => [claimKey(c), c]))
-      const claim_keys: ClaimKey[] = [...selected].map(k => {
-        const c = keyMap.get(k)!
-        return { batch_id: c.batch_id, enrollee_id: c.enrollee_id, procedure_code: c.procedure_code }
-      })
-      const res = await nhiaFetch(`${API}/api/v1/nhia/claims/pay`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ claim_keys, paid_date: payDate }),
-      })
-      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Pay failed') }
-      const data = await res.json()
-      toast.success(`${data.paid} claim${data.paid !== 1 ? 's' : ''} marked as paid`)
-      setShowPay(false)
-      await load()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Pay failed')
-    } finally {
-      setPaying(false)
-    }
+    await submitPayment('pay')
   }
+
+  async function handleUnpay() {
+    if (!reversalReasonValid(unpayReason)) { toast.error('Enter a reversal reason'); return }
+    await submitPayment('unpay')
+  }
+
+  const downloadUrl = `${API}/api/v1/nhia/claims/export?${claimsQuery(decision, search, dateFrom, dateTo)}`
 
   const totalPages   = Math.ceil(total / limit)
   const denialReason = (c: Claim) => c.decision === 'DENY' ? (c.drop_reason || c.reasoning || '—') : null
@@ -155,17 +191,25 @@ export default function NHIAClaimsPage() {
           <p className="text-sm text-slate-500 mt-0.5">All individual claim lines from accepted batches</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {selected.size > 0 && (
+          {selected.size > 0 && decision !== 'PAID' && (
             <Button variant="primary" size="md" onClick={() => setShowPay(true)}
               className="bg-emerald-600 hover:bg-emerald-700">
               Pay Selected ({selected.size})
             </Button>
           )}
-          {approvableOnPage.length > 0 && selected.size === 0 && (
-            <Button variant="outline" size="md" onClick={selectAllOnPage}>
-              Select All Approved ({approvableOnPage.length})
+          {selected.size > 0 && decision === 'PAID' && (
+            <Button variant="primary" size="md" onClick={() => setShowUnpay(true)}>
+              Unpay Selected ({selected.size})
             </Button>
           )}
+          {selectableOnPage.length > 0 && selected.size === 0 && (
+            <Button variant="outline" size="md" onClick={selectAllOnPage}>
+              Select All {decision === 'PAID' ? 'Paid' : 'Approved'} ({selectableOnPage.length})
+            </Button>
+          )}
+          <a href={downloadUrl} className="px-3 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+            Download All
+          </a>
           <Link href="/nhia-vetting/learning"
             className="px-3 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
             Learning DB
@@ -247,7 +291,7 @@ export default function NHIAClaimsPage() {
               <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="px-3 py-3 w-8">
                   <input type="checkbox"
-                    checked={approvableOnPage.length > 0 && approvableOnPage.every(c => selected.has(claimKey(c)))}
+                    checked={selectableOnPage.length > 0 && selectableOnPage.every(c => selected.has(claimKey(c)))}
                     onChange={e => e.target.checked ? selectAllOnPage() : setSelected(new Set())}
                     className="rounded border-slate-300" />
                 </th>
@@ -276,7 +320,7 @@ export default function NHIAClaimsPage() {
               {claims.map((c, i) => {
                 const key        = claimKey(c)
                 const isSelected = selected.has(key)
-                const canSelect  = c.decision === 'APPROVE' && !c.paid
+                const canSelect  = !c.legacy_ambiguous && (decision === 'PAID' ? c.paid : c.decision === 'APPROVE' && !c.paid)
                 const reason     = denialReason(c)
                 const statedTotal = c.stated_price != null
                   ? Math.round((c.stated_price * (c.stated_quantity ?? 1)) * 100) / 100
@@ -288,6 +332,7 @@ export default function NHIAClaimsPage() {
                   <tr key={`${key}-${i}`}
                     className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${isSelected ? 'bg-emerald-50/40' : i % 2 === 0 ? '' : 'bg-slate-50/30'}`}>
                     <td className="px-3 py-3 text-center">
+                      {c.legacy_ambiguous && <span title="Multiple historical claim lines share this old identifier; manual reconciliation is required." className="text-xs text-amber-700">Reconciliation required</span>}
                       {canSelect && (
                         <input type="checkbox" checked={isSelected}
                           onChange={() => toggleSelect(key)}
@@ -406,6 +451,22 @@ export default function NHIAClaimsPage() {
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700">
                 Confirm Payment
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showUnpay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-5">
+            <h2 className="text-lg font-bold text-slate-900">Reverse payment</h2>
+            <p className="text-sm text-slate-600">Unpay {selected.size} selected claim{selected.size !== 1 ? 's' : ''}. The adjudication decision will remain unchanged.</p>
+            <label className="block text-sm font-semibold">Reason
+              <textarea value={unpayReason} onChange={e => setUnpayReason(e.target.value)}
+                className="mt-2 w-full border rounded-lg p-2" required rows={3} />
+            </label>
+            <div className="flex gap-3">
+              <Button variant="ghost" size="md" onClick={() => setShowUnpay(false)}>Cancel</Button>
+              <Button variant="primary" size="md" onClick={handleUnpay} disabled={!reversalReasonValid(unpayReason)} loading={unpaying}>Confirm Unpay</Button>
             </div>
           </div>
         </div>
