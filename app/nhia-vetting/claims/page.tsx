@@ -2,7 +2,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Button, Badge, useToast } from '@/components/ui'
-import { nhiaFetch } from '@/lib/nhia-fetch'
 import { claimSelectionKey, selectableClaims, claimsQuery, reversalReasonValid, paymentError, withClaimsRefresh } from '@/lib/claims-selection'
 
 const API = process.env.NEXT_PUBLIC_NHIA_API_URL || 'http://localhost:8005'
@@ -34,6 +33,8 @@ interface Claim {
   stated_quantity: number | null
   adjusted_price: number | null
   adjusted_quantity: number | null
+  approved_quantity?: number | null
+  approved_total?: number | null
   paid: boolean
   paid_date: string | null
   legacy_ambiguous?: boolean
@@ -79,6 +80,85 @@ export default function NHIAClaimsPage() {
   const [showUnpay, setShowUnpay] = useState(false)
   const [unpayReason, setUnpayReason] = useState('')
   const [unpaying, setUnpaying] = useState(false)
+  const [claimsAuth, setClaimsAuth] = useState<{ id: string; name: string; grants: string[] } | null>(null)
+  const [showClaimsLogin, setShowClaimsLogin] = useState(false)
+  const [claimsOperator, setClaimsOperator] = useState('')
+  const [claimsCredential, setClaimsCredential] = useState('')
+  const [claimsLoginBusy, setClaimsLoginBusy] = useState(false)
+  const [reconcileRow, setReconcileRow] = useState<Claim | null>(null)
+  const [conflictingLines, setConflictingLines] = useState<Claim[]>([])
+  const [reconcileReason, setReconcileReason] = useState('')
+  const [evidenceReference, setEvidenceReference] = useState('')
+  const [confirmNoPayment, setConfirmNoPayment] = useState(false)
+  const [reconcileBusy, setReconcileBusy] = useState(false)
+
+  const refreshClaimsAuth = useCallback(async () => {
+    try {
+      const response = await fetch('/api/nhia/claims/auth/session', { cache: 'no-store' })
+      setClaimsAuth(response.ok ? await response.json() : null)
+    } catch { setClaimsAuth(null) }
+  }, [])
+
+  useEffect(() => { void refreshClaimsAuth() }, [refreshClaimsAuth])
+
+  async function loginClaims(e: React.FormEvent) {
+    e.preventDefault()
+    setClaimsLoginBusy(true)
+    try {
+      const response = await fetch('/api/nhia/claims/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operator_id: claimsOperator, credential: claimsCredential }),
+      })
+      setClaimsCredential('')
+      if (!response.ok) throw new Error('Claims authorization failed')
+      await refreshClaimsAuth()
+      setShowClaimsLogin(false)
+    } catch { toast.error('Claims authorization failed') }
+    finally { setClaimsLoginBusy(false) }
+  }
+
+  async function openReconcile(row: Claim) {
+    if (!claimsAuth?.grants.includes('claims.reconcile')) { setShowClaimsLogin(true); return }
+    setReconcileRow(row)
+    setConflictingLines([])
+    setReconcileReason('')
+    setEvidenceReference('')
+    setConfirmNoPayment(false)
+    const query = new URLSearchParams({ batch_id: row.batch_id, enrollee_id: row.enrollee_id,
+      procedure_code: row.procedure_code })
+    try {
+      const response = await fetch(`/api/nhia/claims/reconcile-candidates?${query}`, { cache: 'no-store' })
+      if (response.status === 401) { setClaimsAuth(null); setShowClaimsLogin(true) }
+      if (!response.ok) throw new Error('Could not load conflicting claim lines')
+      const data = await response.json()
+      setConflictingLines(data.claims)
+    } catch { toast.error('Could not load conflicting claim lines'); setReconcileRow(null) }
+  }
+
+  async function submitReconcile() {
+    const target = conflictingLines.find(line => line.request_id === reconcileRow?.request_id && line.decision === 'APPROVE')
+    if (!reconcileRow || !target || !confirmNoPayment || !reconcileReason.trim() || !evidenceReference.trim()) return
+    setReconcileBusy(true)
+    try {
+      await withClaimsRefresh(async () => {
+        const response = await fetch('/api/nhia/claims/reconcile', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batch_id: reconcileRow.batch_id, enrollee_id: reconcileRow.enrollee_id,
+            procedure_code: reconcileRow.procedure_code, target_request_id: target.request_id,
+            reason: reconcileReason.trim(), evidence_reference: evidenceReference.trim(),
+            confirm_no_actual_provider_payment: true }),
+        })
+        if (response.status === 401) { setClaimsAuth(null); setShowClaimsLogin(true) }
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}))
+          throw new Error(paymentError(error.detail))
+        }
+        setReconcileRow(null)
+        toast.success('Legacy marker marked not paid. Review the APPROVE claim before Pay.')
+      }, load)
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Reconciliation failed; review refreshed Claims') }
+    finally { setReconcileBusy(false); await refreshClaimsAuth() }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -132,6 +212,10 @@ export default function NHIAClaimsPage() {
   }
 
   async function submitPayment(action: 'pay' | 'unpay') {
+    if (!claimsAuth?.grants.includes(`claims.${action}`)) {
+      setShowClaimsLogin(true)
+      return
+    }
     const keys = selectedKeys()
     if (!keys || keys.length === 0) {
       toast.error('Selection is stale. Claims were refreshed; select the remaining claims again.')
@@ -143,11 +227,12 @@ export default function NHIAClaimsPage() {
     else setUnpaying(true)
     try {
       await withClaimsRefresh(async () => {
-      const res = await nhiaFetch(`${API}/api/v1/nhia/claims/${action}`, {
+      const res = await fetch(`/api/nhia/claims/${action}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(isPay ? { claim_keys: keys, paid_date: payDate }
                                   : { claim_keys: keys, reason: unpayReason.trim() }),
       })
+      if (res.status === 401) { setClaimsAuth(null); setShowClaimsLogin(true) }
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         const detail = data?.detail
@@ -162,6 +247,7 @@ export default function NHIAClaimsPage() {
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Payment operation failed. Review refreshed Claims.')
     } finally {
+      await refreshClaimsAuth()
       if (isPay) setPaying(false)
       else setUnpaying(false)
     }
@@ -191,14 +277,14 @@ export default function NHIAClaimsPage() {
           <p className="text-sm text-slate-500 mt-0.5">All individual claim lines from accepted batches</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {selected.size > 0 && decision !== 'PAID' && (
-            <Button variant="primary" size="md" onClick={() => setShowPay(true)}
+          {selected.size > 0 && decision !== 'PAID' && (!claimsAuth || claimsAuth.grants.includes('claims.pay')) && (
+            <Button variant="primary" size="md" onClick={() => claimsAuth?.grants.includes('claims.pay') ? setShowPay(true) : setShowClaimsLogin(true)}
               className="bg-emerald-600 hover:bg-emerald-700">
               Pay Selected ({selected.size})
             </Button>
           )}
-          {selected.size > 0 && decision === 'PAID' && (
-            <Button variant="primary" size="md" onClick={() => setShowUnpay(true)}>
+          {selected.size > 0 && decision === 'PAID' && (!claimsAuth || claimsAuth.grants.includes('claims.unpay')) && (
+            <Button variant="primary" size="md" onClick={() => claimsAuth?.grants.includes('claims.unpay') ? setShowUnpay(true) : setShowClaimsLogin(true)}>
               Unpay Selected ({selected.size})
             </Button>
           )}
@@ -210,6 +296,14 @@ export default function NHIAClaimsPage() {
           <a href={downloadUrl} className="px-3 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
             Download All
           </a>
+          {claimsAuth ? <button type="button" className="text-xs text-slate-600 underline" onClick={async () => {
+            try {
+              const response = await fetch('/api/nhia/claims/auth/logout', { method: 'POST' })
+              if (!response.ok) throw new Error('Claims sign-out could not be verified')
+              setClaimsAuth(null)
+            } catch { toast.error('Claims sign-out could not be verified') }
+          }}>Exit payment mode ({claimsAuth.name})</button>
+            : <button type="button" className="text-xs text-slate-600 underline" onClick={() => setShowClaimsLogin(true)}>Enter payment mode</button>}
           <Link href="/nhia-vetting/learning"
             className="px-3 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
             Learning DB
@@ -333,6 +427,8 @@ export default function NHIAClaimsPage() {
                     className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${isSelected ? 'bg-emerald-50/40' : i % 2 === 0 ? '' : 'bg-slate-50/30'}`}>
                     <td className="px-3 py-3 text-center">
                       {c.legacy_ambiguous && <span title="Multiple historical claim lines share this old identifier; manual reconciliation is required." className="text-xs text-amber-700">Reconciliation required</span>}
+                      {c.legacy_ambiguous && c.decision === 'APPROVE' && c.request_id && claimsAuth?.grants.includes('claims.reconcile') &&
+                        <button type="button" className="block text-xs underline text-amber-800" onClick={() => openReconcile(c)}>Reconcile</button>}
                       {canSelect && (
                         <input type="checkbox" checked={isSelected}
                           onChange={() => toggleSelect(key)}
@@ -430,6 +526,37 @@ export default function NHIAClaimsPage() {
       )}
 
       {/* ── Pay Modal ── */}
+      {showClaimsLogin && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <form onSubmit={loginClaims} className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4">
+          <h2 className="text-lg font-bold">Claims payment authorization</h2>
+          <p className="text-sm text-slate-600">Enter your separately issued Claims operator credential.</p>
+          <label className="block text-sm">Operator ID<input required maxLength={128} value={claimsOperator}
+            onChange={e => setClaimsOperator(e.target.value)} className="block w-full border rounded p-2 mt-1" /></label>
+          <label className="block text-sm">Claims credential<input required type="password" autoComplete="current-password"
+            value={claimsCredential} onChange={e => setClaimsCredential(e.target.value)} className="block w-full border rounded p-2 mt-1" /></label>
+          <div className="flex gap-3"><Button variant="ghost" size="md" onClick={() => { setShowClaimsLogin(false); setClaimsCredential('') }}>Cancel</Button>
+            <Button variant="primary" size="md" type="submit" loading={claimsLoginBusy}>Authorize</Button></div>
+        </form>
+      </div>}
+      {reconcileRow && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 p-6 space-y-4 max-h-[90vh] overflow-auto">
+          <h2 className="text-lg font-bold">Reconcile legacy payment marker</h2>
+          <p className="text-sm text-amber-900">This does NOT change APPROVE/DENY decisions and does NOT pay any claim. After reconciliation, the APPROVE claim can be selected and paid normally.</p>
+          <table className="w-full text-xs"><thead><tr><th>Request ID</th><th>Procedure</th><th>Diagnosis</th><th>Decision</th><th>Approved qty</th><th>Approved total</th></tr></thead>
+            <tbody>{conflictingLines.map(line => <tr key={line.request_id}><td>{line.request_id}</td><td>{line.procedure_code} {line.procedure_name}</td>
+              <td>{line.diagnosis_code}</td><td>{line.decision}</td><td>{line.approved_quantity ?? '—'}</td><td>{fmtMoney(line.approved_total ?? null)}</td></tr>)}</tbody></table>
+          <label className="flex gap-2 text-sm"><input type="checkbox" checked={confirmNoPayment} onChange={e => setConfirmNoPayment(e.target.checked)} />
+            I confirm no actual provider payment was made for this legacy payment record.</label>
+          <label className="block text-sm">Reason<textarea required value={reconcileReason} onChange={e => setReconcileReason(e.target.value)}
+            className="block w-full border rounded p-2 mt-1" /></label>
+          <label className="block text-sm">Evidence or ledger reference<input required maxLength={256} value={evidenceReference}
+            onChange={e => setEvidenceReference(e.target.value)} className="block w-full border rounded p-2 mt-1" /></label>
+          <div className="flex gap-3"><Button variant="ghost" size="md" onClick={() => setReconcileRow(null)}>Cancel</Button>
+            <Button variant="primary" size="md" onClick={submitReconcile} loading={reconcileBusy}
+              disabled={!confirmNoPayment || !reconcileReason.trim() || !evidenceReference.trim() || conflictingLines.length < 2}>
+              Mark legacy payment as not paid</Button></div>
+        </div>
+      </div>}
       {showPay && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-5">
