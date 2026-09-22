@@ -47,6 +47,10 @@ test('structured payment errors map to safe operator messages', () => {
   assert.match(paymentError({ code: 'PAYMENT_STATE_CHANGED', paid_claims: [rows[0]] }), /changed while processing/)
   assert.match(paymentError([{ loc: ['body', 'reason'], msg: 'required' }]), /invalid/)
   assert.match(reversalError('AMBIGUOUS_LEGACY_CLAIM'), /Manual reconciliation/)
+  assert.match(paymentError('LEGACY_KEY_NOT_AMBIGUOUS'), /conflicting set/)
+  assert.match(paymentError('CANONICAL_CLAIM_ALREADY_PAID'), /already paid/)
+  assert.match(paymentError('APPROVE_ONLY_CONFLICT'), /approved and a non-approved/)
+  assert.match(paymentError('RECONCILIATION_EVIDENCE_REQUIRED'), /evidence reference/)
 })
 
 

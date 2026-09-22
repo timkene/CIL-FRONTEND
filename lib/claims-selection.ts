@@ -48,6 +48,10 @@ export function paymentError(detail: unknown): string {
     PAYMENT_NOT_FOUND: 'The selected payment could not be found.',
     DUPLICATE_CLAIM: 'The same claim was selected more than once.',
     INVALID_REQUEST: 'The request is invalid. Check the selected claims and required fields.',
+    LEGACY_KEY_NOT_AMBIGUOUS: 'This legacy key does not identify a conflicting set of claims.',
+    CANONICAL_CLAIM_ALREADY_PAID: 'The selected canonical claim is already paid. Reconciliation was stopped.',
+    APPROVE_ONLY_CONFLICT: 'This reconciliation path requires both an approved and a non-approved claim.',
+    RECONCILIATION_EVIDENCE_REQUIRED: 'Enter a reason and evidence reference, and confirm no provider payment occurred.',
   }
   return messages[code] || 'Payment operation failed. Review the refreshed Claims list.'
 }
