@@ -33,6 +33,10 @@ export function claimsQuery(section: string, search: string, dateFrom: string, d
   return params
 }
 
+export function normalizeBatchFilter(value: string): string {
+  return value.trim()
+}
+
 export function mergeEligibleSelection<T extends ClaimSelectionRow>(current: Map<string, T>, rows: T[]): Map<string, T> {
   const next = new Map(current)
   for (const row of rows) {
