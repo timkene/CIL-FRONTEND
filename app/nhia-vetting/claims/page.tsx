@@ -40,10 +40,31 @@ interface Claim {
   legacy_ambiguous?: boolean
 }
 
+interface ClaimsMetrics {
+  totalApprovedAmount: number
+  paidAmount: number
+  outstandingApprovedAmount: number
+  deniedAmount: number
+  approvedCount: number
+  paidCount: number
+  outstandingApprovedCount: number
+  deniedCount: number
+  approvalRate: number
+  paymentProgress: number
+  missingApprovedAmountCount: number
+  missingPaidAmountCount: number
+  ambiguousPaymentCount: number
+  ambiguousPaymentAmount: number
+  missingDeniedAmountCount: number
+  deniedLinesWithRecordedAmountCount: number
+  deniedLinesWithRecordedAmountValue: number
+  unrecognizedDecisionCount: number
+}
+
 type ClaimKey = { batch_id: string; request_id?: string; enrollee_id: string; procedure_code: string }
 
 function fmtMoney(n: number | null) {
-  if (!n) return '—'
+  if (n == null) return '—'
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 function fmtDate(s: string | null) {
@@ -58,11 +79,40 @@ function apiKey(c: Claim): ClaimKey {
     enrollee_id: c.enrollee_id, procedure_code: c.procedure_code }
 }
 
+function Scorecard({ label, value, detail, prominent = false }: {
+  label: string; value: string; detail?: string; prominent?: boolean
+}) {
+  return (
+    <div className={`rounded-xl border p-4 min-w-0 ${prominent
+      ? 'bg-amber-50 border-amber-300 shadow-sm md:col-span-2'
+      : 'bg-white border-slate-200'}`}>
+      <p className={`text-[11px] font-semibold uppercase tracking-wide ${prominent ? 'text-amber-800' : 'text-slate-500'}`}>{label}</p>
+      <p className={`mt-1 font-bold tabular-nums truncate ${prominent ? 'text-2xl text-slate-950' : 'text-xl text-slate-900'}`}
+        title={value}>{value}</p>
+      {detail && <p className="mt-1 text-xs text-amber-700" title={detail}>{detail}</p>}
+    </div>
+  )
+}
+
+function deniedDataQuality(metrics: ClaimsMetrics): string | undefined {
+  const missing = metrics.missingDeniedAmountCount
+  const anomalous = metrics.deniedLinesWithRecordedAmountCount
+  if (!missing && !anomalous) return undefined
+  const quality = missing && anomalous ? 'incomplete/anomalous data'
+    : missing ? 'incomplete data' : 'anomalous data'
+  const issues = [
+    ...(missing ? [`${missing.toLocaleString()} missing`] : []),
+    ...(anomalous ? [`${anomalous.toLocaleString()} with unexpected recorded amount`] : []),
+  ]
+  return `Recorded/requested amount — ${quality} (${issues.join('; ')})`
+}
+
 export default function NHIAClaimsPage() {
   const toast = useToast()
 
   const [claims, setClaims]         = useState<Claim[]>([])
   const [total, setTotal]           = useState(0)
+  const [metrics, setMetrics]       = useState<ClaimsMetrics | null>(null)
   const [loading, setLoading]       = useState(true)
   const [error, setError]           = useState('')
   const [decision, setDecision]     = useState('ALL')
@@ -155,19 +205,20 @@ export default function NHIAClaimsPage() {
         }
         setReconcileRow(null)
         toast.success('Legacy marker marked not paid. Review the APPROVE claim before Pay.')
-      }, load)
+      }, refreshClaims)
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Reconciliation failed; review refreshed Claims') }
     finally { setReconcileBusy(false); await refreshClaimsAuth() }
   }
 
-  const load = useCallback(async () => {
+  const loadClaims = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
       const params = claimsQuery(decision, search, dateFrom, dateTo)
       params.set('page', String(page))
       params.set('limit', String(limit))
-      const res  = await fetch(`${API}/api/v1/nhia/claims?${params}`)
+      const res = await fetch(`${API}/api/v1/nhia/claims?${params}`)
+      if (!res.ok) throw new Error('Claims request failed')
       const data = await res.json()
       setClaims(data.claims || [])
       setTotal(data.total || 0)
@@ -181,12 +232,28 @@ export default function NHIAClaimsPage() {
     }
   }, [decision, search, dateFrom, dateTo, page]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { load() }, [load])
+  const loadMetrics = useCallback(async () => {
+    try {
+      const params = claimsQuery(decision, search, dateFrom, dateTo)
+      const response = await fetch(`${API}/api/v1/nhia/claims/metrics?${params}`)
+      if (!response.ok) throw new Error('Claims metrics request failed')
+      setMetrics(await response.json())
+    } catch {
+      setError('Failed to load Claims scorecards')
+      toast.error('Failed to load Claims scorecards')
+    }
+  }, [decision, search, dateFrom, dateTo]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refreshClaims = useCallback(async () => {
+    await Promise.all([loadClaims(), loadMetrics()])
+  }, [loadClaims, loadMetrics])
+
+  useEffect(() => { void loadClaims() }, [loadClaims])
+  useEffect(() => { void loadMetrics() }, [loadMetrics])
 
   function handleSearch(e: React.SyntheticEvent) {
     e.preventDefault()
     setPage(1)
-    load()
   }
 
   function toggleSelect(key: string) {
@@ -219,7 +286,7 @@ export default function NHIAClaimsPage() {
     const keys = selectedKeys()
     if (!keys || keys.length === 0) {
       toast.error('Selection is stale. Claims were refreshed; select the remaining claims again.')
-      await load()
+      await refreshClaims()
       return
     }
     const isPay = action === 'pay'
@@ -243,7 +310,7 @@ export default function NHIAClaimsPage() {
       toast.success(isPay ? `${data.paid} claim(s) marked as paid` : `${data.reversed} payment(s) reversed`)
       if (isPay) setShowPay(false)
       else { setShowUnpay(false); setUnpayReason('') }
-      }, load)
+      }, refreshClaims)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Payment operation failed. Review refreshed Claims.')
     } finally {
@@ -357,6 +424,28 @@ export default function NHIAClaimsPage() {
           )}
         </div>
       </form>
+
+      {metrics && (
+        <section aria-label="Claims scorecards" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-3">
+          <Scorecard label="Total Approved" value={fmtMoney(metrics.totalApprovedAmount)}
+            detail={metrics.missingApprovedAmountCount > 0
+              ? `Recorded amount — incomplete data (${metrics.missingApprovedAmountCount.toLocaleString()} missing)` : undefined} />
+          <Scorecard label="Paid" value={fmtMoney(metrics.paidAmount)}
+            detail={metrics.missingPaidAmountCount > 0
+              ? `Recorded amount — incomplete data (${metrics.missingPaidAmountCount.toLocaleString()} missing)` : undefined} />
+          <Scorecard label="Outstanding to Pay" value={fmtMoney(metrics.outstandingApprovedAmount)} prominent
+            detail={metrics.missingApprovedAmountCount > metrics.missingPaidAmountCount || metrics.ambiguousPaymentCount > 0
+              ? `Recorded amount — ${metrics.missingApprovedAmountCount - metrics.missingPaidAmountCount} missing; ${metrics.ambiguousPaymentCount} ambiguous (${fmtMoney(metrics.ambiguousPaymentAmount)})`
+              : undefined} />
+          <Scorecard label="Denied" value={fmtMoney(metrics.deniedAmount)}
+            detail={deniedDataQuality(metrics)} />
+          <Scorecard label="Approved Claims" value={metrics.approvedCount.toLocaleString()}
+            detail={`${metrics.approvalRate.toFixed(2)}% approval rate${metrics.unrecognizedDecisionCount
+              ? ` · ${metrics.unrecognizedDecisionCount.toLocaleString()} unrecognized decisions` : ''}`} />
+          <Scorecard label="Payment Progress" value={`${metrics.paymentProgress.toFixed(2)}%`}
+            detail={`${metrics.paidCount.toLocaleString()} paid · ${metrics.outstandingApprovedCount.toLocaleString()} outstanding`} />
+        </section>
+      )}
 
       {error && (
         <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3">{error}</div>
