@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { claimSelectionKey, selectableClaims, claimsQuery, mergeEligibleSelection,
   removeSelectedClaim, selectionSummary, createLatestRequestGate,
   mergeConfirmedBulkSelection, clearSelectionForScopeChange, reversalReasonValid,
-  reversalError, paymentError, withClaimsRefresh } from '../lib/claims-selection.ts'
+  normalizeBatchFilter, reversalError, paymentError, withClaimsRefresh } from '../lib/claims-selection.ts'
 
 const rows = [
   { batch_id: 'b', request_id: 'a', enrollee_id: 'e', procedure_code: 'P', decision: 'APPROVE', paid: false, eligible_for_pay: true, total_amount: 10.1 },
@@ -30,6 +30,13 @@ test('download query carries the same section and filters as the list', () => {
   assert.equal(claimsQuery('PAID', 'e', '2026-01-01', '2026-01-31', 'batch-1').toString(),
     'decision=PAID&search=e&date_from=2026-01-01&date_to=2026-01-31&batch_id=batch-1')
   assert.equal(claimsQuery('ALL', '', '', '').toString(), '')
+})
+
+test('batch filter normalizes pasted outer whitespace only', () => {
+  for (const value of ['clean-batch', ' clean-batch', 'clean-batch ', '  clean-batch  ']) {
+    assert.equal(normalizeBatchFilter(value), 'clean-batch')
+  }
+  assert.equal(normalizeBatchFilter('batch with internal space'), 'batch with internal space')
 })
 
 test('Unpay requires a reason and explains ambiguous legacy payments', () => {
@@ -114,6 +121,14 @@ test('newer request wins even when rapid requests share one scope', () => {
   assert.equal(gate.isCurrent(second, 'batch:b'), true)
   gate.invalidate()
   assert.equal(gate.isCurrent(second, 'batch:b'), false)
+})
+
+test('old-page request cannot win after a filter resets the list to page one', () => {
+  const gate = createLatestRequestGate()
+  const oldPage = gate.begin('ALL\u0000\u0000\u0000\u0000\u00005')
+  const filteredPageOne = gate.begin('ALL\u0000\u0000\u0000\u0000batch-target\u00001')
+  assert.equal(gate.isCurrent(oldPage, filteredPageOne.scope), false)
+  assert.equal(gate.isCurrent(filteredPageOne, filteredPageOne.scope), true)
 })
 
 test('whole-batch confirmation merges only on explicit valid confirmation', () => {

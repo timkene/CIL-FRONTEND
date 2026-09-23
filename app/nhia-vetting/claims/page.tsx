@@ -5,7 +5,7 @@ import { Button, Badge, useToast } from '@/components/ui'
 import { claimSelectionKey, selectableClaims, claimsQuery, mergeEligibleSelection,
   removeSelectedClaim, selectionSummary, createLatestRequestGate,
   mergeConfirmedBulkSelection, clearSelectionForScopeChange, reversalReasonValid,
-  paymentError, withClaimsRefresh } from '@/lib/claims-selection'
+  normalizeBatchFilter, paymentError, withClaimsRefresh } from '@/lib/claims-selection'
 
 const API = process.env.NEXT_PUBLIC_NHIA_API_URL || 'http://localhost:8005'
 
@@ -350,6 +350,11 @@ export default function NHIAClaimsPage() {
     setPage(1)
   }
 
+  function updateFilter(setter: (value: string) => void, value: string) {
+    setter(value)
+    setPage(1)
+  }
+
   function toggleSelect(row: Claim) {
     const key = claimKey(row)
     setSelected(prev => {
@@ -590,7 +595,7 @@ export default function NHIAClaimsPage() {
             {(['ALL', 'APPROVE', 'DENY', 'PAID'] as const).map(d => (
               <Button key={d} variant={decision === d ? 'primary' : 'ghost'} size="sm"
                 type="button"
-                onClick={() => { setDecision(d); setPage(1) }}
+                onClick={() => updateFilter(setDecision, d)}
                 className={`rounded-none ${
                   decision === d && d === 'APPROVE' ? 'bg-emerald-500 hover:bg-emerald-600' :
                   decision === d && d === 'DENY'    ? 'bg-rose-500 hover:bg-rose-600'       :
@@ -602,24 +607,24 @@ export default function NHIAClaimsPage() {
           </div>
           <div className="flex-1 min-w-[200px]">
             <input type="text" placeholder="Search enrollee ID or procedure…"
-              value={search} onChange={e => setSearch(e.target.value)}
+              value={search} onChange={e => updateFilter(setSearch, e.target.value)}
               className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#137fec]/30" />
           </div>
           <div className="min-w-[220px]">
             <label htmlFor="claims-batch-filter" className="block text-xs font-semibold text-slate-500 mb-1">Batch Number</label>
             <input id="claims-batch-filter" list="claims-batch-options" type="text"
               placeholder="All batches" value={batchId}
-              onChange={e => { setBatchId(e.target.value.trim()); setPage(1) }}
+              onChange={e => updateFilter(setBatchId, normalizeBatchFilter(e.target.value))}
               className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#137fec]/30" />
             <datalist id="claims-batch-options">
               {batchOptions.map(batch => <option key={batch.batch_id} value={batch.batch_id}>{batch.batch_name || batch.batch_id}</option>)}
             </datalist>
           </div>
           <div className="flex items-center gap-2">
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            <input type="date" value={dateFrom} onChange={e => updateFilter(setDateFrom, e.target.value)}
               className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#137fec]/30" />
             <span className="text-slate-400 text-sm">to</span>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            <input type="date" value={dateTo} onChange={e => updateFilter(setDateTo, e.target.value)}
               className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#137fec]/30" />
           </div>
           <Button type="submit" variant="primary" size="md">Search</Button>

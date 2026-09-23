@@ -62,3 +62,12 @@ test('page-only pagination still cannot reload metrics or eligibility', () => {
   assert.doesNotMatch(metricsLoader, /\bpage\b/)
   assert.doesNotMatch(eligibilityLoader, /\bpage\b/)
 })
+
+test('every Claims filter transition resets the list to page one', () => {
+  assert.match(source, /function updateFilter[\s\S]*setPage\(1\)/)
+  assert.match(source, /onClick=\{\(\) => updateFilter\(setDecision, d\)\}/)
+  assert.match(source, /onChange=\{e => updateFilter\(setSearch, e\.target\.value\)\}/)
+  assert.match(source, /onChange=\{e => updateFilter\(setBatchId, normalizeBatchFilter\(e\.target\.value\)\)\}/)
+  assert.match(source, /onChange=\{e => updateFilter\(setDateFrom, e\.target\.value\)\}/)
+  assert.match(source, /onChange=\{e => updateFilter\(setDateTo, e\.target\.value\)\}/)
+})
