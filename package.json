@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "node --test tests/*.test.mjs",
-    "test:claims": "node --test tests/claims-gateway-core.test.mjs tests/claims-selection.test.mjs && node --experimental-loader ./tests/claims-route-loader.mjs --test tests/claims-routes.test.mjs"
+    "test:claims": "node --test tests/claims-gateway-core.test.mjs tests/claims-selection.test.mjs tests/claims-scorecards.test.mjs && node --experimental-loader ./tests/claims-route-loader.mjs --test tests/claims-routes.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.98.0",
