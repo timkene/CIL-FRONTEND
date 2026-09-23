@@ -12,7 +12,7 @@ test('Claims page renders all six backend scorecards', () => {
 })
 
 test('scorecards request backend metrics with the same filters and never sum visible rows', () => {
-  assert.match(source, /claimsQuery\(decision, search, dateFrom, dateTo\)/)
+  assert.match(source, /claimsQuery\(decision, search, dateFrom, dateTo, batchId\)/)
   assert.match(source, /\/api\/v1\/nhia\/claims\/metrics\?\$\{params\}/)
   assert.doesNotMatch(source, /claims\.(reduce|filter)\([^\n]*totalApprovedAmount/)
 })
