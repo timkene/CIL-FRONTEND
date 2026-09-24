@@ -50,6 +50,8 @@ export default function PharmacyOrderPage() {
   const [confirmingReceipt, setConfirmingReceipt] = useState(false)
   const [approvingPrice, setApprovingPrice] = useState(false)
   const [adjustedPrice, setAdjustedPrice] = useState<string>('')
+  const [competitiveLines, setCompetitiveLines] = useState<Record<string, string>>({})
+  const [competitiveReason, setCompetitiveReason] = useState('')
 
   const loadSequence = useRef(0)
   const load = useCallback(async () => {
@@ -321,8 +323,17 @@ export default function PharmacyOrderPage() {
             Bidding has closed. Review the winning price before the aggregator is notified.
             You may adjust the price (e.g. after an off-portal negotiation) before approving.
           </p>
+          {order.quotedProcedurePrices?.map(line => <label key={line.medicationLineId} className="block text-sm">
+            {line.procedureCode} quoted at ₦{line.amount.toLocaleString()} — approved price
+            <input type="number" min="0.01" step="0.01" className="block border rounded px-3 py-2"
+              value={competitiveLines[line.medicationLineId] ?? String(line.amount)}
+              onChange={e => setCompetitiveLines(prev => ({ ...prev, [line.medicationLineId]: e.target.value }))} />
+          </label>)}
+          {!!order.quotedProcedurePrices?.length && <label className="block text-sm">Reason for any adjustment
+            <input className="block border rounded px-3 py-2 w-full" value={competitiveReason} onChange={e => setCompetitiveReason(e.target.value)} />
+          </label>}
           <div className="flex items-end gap-3 pt-1 border-t border-amber-200">
-            <div className="flex flex-col gap-1">
+            {!order.quotedProcedurePrices?.length && <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Adjusted Price (optional)
               </label>
@@ -335,19 +346,22 @@ export default function PharmacyOrderPage() {
                 onChange={e => setAdjustedPrice(e.target.value)}
                 className="border border-slate-300 rounded-lg px-3 py-2 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-amber-400"
               />
-            </div>
+            </div>}
             <button
               disabled={approvingPrice}
               onClick={async () => {
-                const parsed = adjustedPrice.trim() ? parseFloat(adjustedPrice) : undefined
-                if (parsed !== undefined && isNaN(parsed)) {
-                  setToast('Please enter a valid price')
-                  return
-                }
+                const lines = order.quotedProcedurePrices?.map(line => ({ ...line, amount: Number(competitiveLines[line.medicationLineId] ?? line.amount) }))
+                if (lines?.some(line => !Number.isFinite(line.amount) || line.amount <= 0 || !/^\d+(?:\.\d{1,2})?$/.test(String(competitiveLines[line.medicationLineId] ?? line.amount)))) { setToast('Enter a positive price for every procedure'); return }
+                if (lines?.some((line, index) => line.amount !== order.quotedProcedurePrices?.[index].amount) && !competitiveReason.trim()) { setToast('Give a reason for the adjusted prices'); return }
+                const legacyPrice = adjustedPrice.trim() ? Number(adjustedPrice) : undefined
+                if (!lines && legacyPrice !== undefined && (!Number.isFinite(legacyPrice) || legacyPrice <= 0)) { setToast('Enter a positive price'); return }
                 setApprovingPrice(true)
                 try {
-                  await clearlineApprovePharmacyOrder(id, parsed)
+                  if (competitiveReason) await clearlineApprovePharmacyOrder(id, lines ?? legacyPrice, competitiveReason)
+                  else await clearlineApprovePharmacyOrder(id, lines ?? legacyPrice)
                   setAdjustedPrice('')
+                  setCompetitiveLines({})
+                  setCompetitiveReason('')
                   await load()
                 } catch (err) {
                   setToast(err instanceof PharmacyApiError ? err.message : 'Failed to approve price')

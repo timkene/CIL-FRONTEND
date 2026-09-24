@@ -255,6 +255,56 @@ test('reads use staff authentication and redact accidental nested token fields w
   assert.equal(out.winnerTotalPrice, 900); assert.ok(!JSON.stringify(out).includes(token))
 })
 
+test('Generate PA proxies only the signed staff session and returns safe per-line results', async () => {
+  const result = { status: 'partial_failure', lines: [{ lineId: 'a', procedureCode: 'DRG-A', amount: 3000, status: 'generated', paNumber: 'PA-1' }], secret: 'must-not-return' }
+  const h = harness({ replies: [response(result)] })
+  const res = await h.load('app/api/pharmacy/[...path]/route.ts').POST(
+    h.request(`/api/pharmacy/api/orders/${id}/generate-pa`, { method: 'POST', session: token, body: { expectedVersion: 4 } }),
+    { params: Promise.resolve({ path: ['api', 'orders', id, 'generate-pa'] }) })
+  assert.equal(res.status, 200)
+  assert.deepEqual(await res.json(), { status: 'partial_failure', lines: result.lines })
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.calls[0].url, `https://pharmacy-dispatch-api.onrender.com/api/orders/${id}/generate-pa`)
+  assert.deepEqual(JSON.parse(h.calls[0].body), { expectedVersion: 4 })
+  assert.equal(h.calls[0].headers['X-Service-Key'], undefined)
+})
+
+test('Generate PA refuses a missing version before contacting backend', async () => {
+  const h = harness()
+  const res = await h.load('app/api/pharmacy/[...path]/route.ts').POST(
+    h.request(`/api/pharmacy/api/orders/${id}/generate-pa`, { method: 'POST', session: token }),
+    { params: Promise.resolve({ path: ['api', 'orders', id, 'generate-pa'] }) })
+  assert.equal(res.status, 422)
+  assert.equal(h.calls.length, 0)
+})
+
+test('Generate PA network failure reports an unknown result', async () => {
+  const h = harness({ fetchImpl: () => { throw new Error('timeout') } })
+  const res = await h.load('app/api/pharmacy/[...path]/route.ts').POST(
+    h.request(`/api/pharmacy/api/orders/${id}/generate-pa`, { method: 'POST', session: token, body: { expectedVersion: 4 } }),
+    { params: Promise.resolve({ path: ['api', 'orders', id, 'generate-pa'] }) })
+  assert.equal(res.status, 504)
+  assert.match((await res.json()).detail, /result may be unknown/)
+})
+
+test('PA verification proxy accepts only the explicit recovery fields', async () => {
+  const h = harness({ replies: [response({ status: 'partial_failure', line: { lineId: 'a', status: 'failed_retryable' } })] })
+  const path = ['api', 'orders', id, 'pa-lines', 'a', 'verify']
+  const body = { resolution: 'confirmed_no_pa', evidence: 'Checked intermediary PA register; no matching PA' }
+  const res = await h.load('app/api/pharmacy/[...path]/route.ts').POST(
+    h.request('/api/pharmacy/' + path.join('/'), { method: 'POST', session: token, body }),
+    { params: Promise.resolve({ path }) })
+  assert.equal(res.status, 200)
+  assert.equal((await res.json()).line.status, 'failed_retryable')
+  assert.equal(h.calls[0].headers['X-Service-Key'], undefined)
+  const denied = harness()
+  const bad = await denied.load('app/api/pharmacy/[...path]/route.ts').POST(
+    denied.request('/api/pharmacy/' + path.join('/'), { method: 'POST', session: token, body: { ...body, token: 'bad' } }),
+    { params: Promise.resolve({ path }) })
+  assert.equal(bad.status, 422)
+  assert.equal(denied.calls.length, 0)
+})
+
 test('central browser transport uses same-origin, redirects only on 401, and never replays', async () => {
   for (const status of [401, 409, 422, 503]) {
     const navigations = []

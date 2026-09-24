@@ -44,8 +44,9 @@ for (const [status, button, action] of [['direct_price_review', 'Approve Price',
   if (button === 'Edit Price') assert.equal(body.totalPrice, 900)
   assert.equal(h.calls[1], 'refresh'); assert.match(text(h.render()), /no longer active/)
 })
-for (const status of ['awaiting_confirmation', 'completed', 'not_received', 'fulfilled']) test(`${status} administration and disabled PA`, () => {
-  const h = harness(status, { paGeneration: { available: false, status: 'not_configured' } }); for (const b of ['Edit Price', 'Cancel Order', 'Recall / Reversal']) assert.ok(h.button(b)); assert.equal(h.button('Generate PA').props.disabled, true)
+for (const status of ['awaiting_confirmation', 'completed', 'not_received', 'fulfilled']) test(`${status} administration and PA eligibility`, () => {
+  const h = harness(status, { paGeneration: { available: false, status: 'not_configured' } }); for (const b of ['Edit Price', 'Cancel Order', 'Recall / Reversal']) assert.ok(h.button(b)); assert.equal(h.button('Generate PA'), undefined)
+  assert.match(text(h.render()), status === 'completed' ? /legacy order has no procedure prices/ : /available only after completion/)
 })
 for (const status of ['cancelled', 'post_fulfilment_recalled']) test(`${status} preserves fulfilment without operations`, () => {
   const h = harness(status, { fulfillmentType: 'delivered', fulfilledAt: '2026-09-01' }); assert.match(text(h.render()), /delivered/); for (const b of ['Edit Price', 'Cancel Order', 'Recall', 'Recall / Reversal']) assert.equal(h.button(b), undefined)
@@ -99,4 +100,54 @@ test('competitive price review retains approval API and refresh', async () => {
   const approve = nodes(tree).find(n => n.type === 'button' && text(n).includes('Approve & Notify Aggregator'))
   assert.ok(approve); await approve.props.onClick()
   assert.deepEqual(calls, [['o', 900], 'refresh'])
+})
+
+test('completed priced order shows each PA result and blocks uncertain retry', () => {
+  const h = harness('completed', {
+    finalProcedurePrices: [{ medicationLineId: 'a', procedureCode: 'DRG-A', amount: 3000 }],
+    medications: [{ lineId: 'a', procedureCode: 'DRG-A' }],
+    medicationSubtotal: 3000, overallTotal: 3500, deliveryFee: 500, fulfillmentType: 'delivered',
+    paGeneration: { status: 'verification_required', lines: [{ lineId: 'a', procedureCode: 'DRG-A', amount: 3000, status: 'generated', paNumber: 'PA-1' },
+      { lineId: 'delivery-PRE11', procedureCode: 'PRE11', amount: 500, status: 'verification_required' }] },
+  })
+  const out = text(h.render())
+  assert.match(out, /DRG-A/); assert.match(out, /PRE11/); assert.match(out, /PA-1/)
+  assert.match(out, /Verify it with MediCloud/)
+  assert.equal(h.button('Generate PA').props.disabled, true)
+})
+
+test('completed priced order offers Generate PA once', async () => {
+  const h = harness('completed', {
+    finalProcedurePrices: [{ medicationLineId: 'a', procedureCode: 'DRG-A', amount: 3000 }],
+    medications: [{ lineId: 'a', procedureCode: 'DRG-A' }],
+    medicationSubtotal: 3000, overallTotal: 3000, fulfillmentType: 'picked_up',
+  })
+  h.api.generatePharmacyPA = async (id, version) => { h.calls.push(['generate', id, version]) }
+  h.button('Generate PA').props.onClick()
+  assert.match(text(h.render()), /Confirm PA submission for order version\s+3/)
+  h.button('Confirm and submit PA').props.onClick()
+  await settle()
+  assert.deepEqual(h.calls[0], ['generate', 'o', 3])
+})
+
+test('PA confirmation closes when the displayed order version changes', () => {
+  const h = harness('completed', { finalProcedurePrices: [{ medicationLineId: 'a', procedureCode: 'DRG-A', amount: 3000 }],
+    medications: [{ lineId: 'a', procedureCode: 'DRG-A', name: 'Drug', quantity: 3, dosage: 'daily' }],
+    medicationSubtotal: 3000, overallTotal: 3000, fulfillmentType: 'picked_up' })
+  h.button('Generate PA').props.onClick()
+  assert.match(text(h.render()), /Total price|line total/)
+  h.order.version = 4
+  assert.equal(h.button('Confirm and submit PA').props.disabled, true)
+  assert.equal(h.calls.length, 0)
+})
+
+test('expired PA submission exposes recovery action and blocks Generate PA', () => {
+  const h = harness('completed', { finalProcedurePrices: [{ medicationLineId: 'a', procedureCode: 'DRG-A', amount: 3000 }],
+    medications: [{ lineId: 'a', procedureCode: 'DRG-A', name: 'Drug', quantity: 3, dosage: 'daily' }],
+    medicationSubtotal: 3000, overallTotal: 3000, fulfillmentType: 'picked_up',
+    paGeneration: { available: true, status: 'interrupted', interrupted: true, active: false,
+      lines: [{ lineId: 'a', procedureCode: 'DRG-A', status: 'submitting', amount: 3000 }] } })
+  assert.match(text(h.render()), /submission was interrupted/)
+  assert.ok(h.button('Mark interrupted PA for verification'))
+  assert.equal(h.button('Generate PA').props.disabled, true)
 })

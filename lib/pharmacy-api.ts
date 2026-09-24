@@ -1,4 +1,4 @@
-import type { PharmacyOrder, PharmacyAggregator, SearchResult, Enrollee, Medication, Provider } from './pharmacy-types'
+import type { PharmacyOrder, PharmacyAggregator, SearchResult, Enrollee, Medication, Provider, PharmacyProcedurePrice, PharmacyPALine } from './pharmacy-types'
 
 const BASE = '/api/pharmacy'
 
@@ -78,10 +78,10 @@ export const assignPharmacyOrder = (id: string, aggregatorId: string, expectedVe
 export const staffConfirmPharmacyReceipt = (id: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/staff-confirm`, { method: 'POST' })
 
-export const clearlineApprovePharmacyOrder = (id: string, adjustedPrice?: number) =>
+export const clearlineApprovePharmacyOrder = (id: string, procedurePrices?: PharmacyProcedurePrice[] | number, reason?: string) =>
   pharmacyFetch<{ success: boolean }>(`/api/orders/${id}/clearline-approve`, {
     method: 'POST',
-    body: JSON.stringify(adjustedPrice !== undefined ? { adjusted_price: adjustedPrice } : {}),
+    body: JSON.stringify(typeof procedurePrices === 'number' ? { adjusted_price: procedurePrices } : { procedurePrices, reason }),
   })
 
 export const updatePharmacyOrder = (
@@ -181,14 +181,15 @@ export const getPharmacyMemberDetail = async (enrolleeId: string): Promise<Membe
 export interface LifecycleResult { success: boolean; status: import('./pharmacy-types').OrderStatus; version: number; assignmentVersion: number }
 export type StaffLifecycleAction = 'direct-approve' | 'direct-deny' | 'recall' | 'adjust-price' | 'cancel'
 export type StaffLifecycleRequest =
-  | { action: 'direct-approve'; expectedVersion: number; adjusted_price?: number; reason?: string }
+  | { action: 'direct-approve'; expectedVersion: number; procedurePrices?: PharmacyProcedurePrice[]; adjusted_price?: number; reason?: string }
   | { action: 'direct-deny' | 'recall' | 'cancel'; expectedVersion: number; reason: string }
-  | { action: 'adjust-price'; expectedVersion: number; totalPrice: number; reason: string }
+  | { action: 'adjust-price'; expectedVersion: number; procedurePrices?: PharmacyProcedurePrice[]; totalPrice?: number; reason: string }
 
 export async function mutatePharmacyLifecycle(id: string, request: StaffLifecycleRequest) {
   const { action, ...body } = request
   const price = 'totalPrice' in body ? body.totalPrice : 'adjusted_price' in body ? body.adjusted_price : undefined
   if (price !== undefined && (!Number.isFinite(price) || price <= 0)) throw new Error('Price must be a positive finite Naira amount.')
+  if ('procedurePrices' in body && body.procedurePrices?.some(line => !Number.isFinite(line.amount) || line.amount <= 0)) throw new Error('Every procedure price must be positive and finite.')
   if (action !== 'direct-approve' || price !== undefined) {
     if (!body.reason?.trim() || body.reason.trim().length > 2000) throw new Error('A reason of 1–2,000 characters is required.')
   }
@@ -204,6 +205,21 @@ export async function pharmacyMutationError(error: unknown, refresh: () => Promi
   }
   return error instanceof Error ? error.message : 'Action failed. Please try again.'
 }
+
+export const generatePharmacyPA = (id: string, expectedVersion: number) =>
+  pharmacyFetch<{ status: string; lines: PharmacyPALine[] }>(`/api/orders/${id}/generate-pa`, {
+    method: 'POST', body: JSON.stringify({ expectedVersion }),
+  })
+
+export const markInterruptedPharmacyPA = (id: string) =>
+  pharmacyFetch<{ status: string; lines: PharmacyPALine[] }>(`/api/orders/${id}/pa-interruption/mark-verification-required`, { method: 'POST' })
+
+export const verifyPharmacyPALine = (id: string, lineId: string, body: {
+  resolution: 'existing_pa' | 'confirmed_no_pa'; evidence: string; paNumber?: string;
+  confirmNoPaCreated?: boolean; verificationMethod?: string; checkedWith?: string; verifiedAt?: string;
+}) => pharmacyFetch<{ status: string; line: PharmacyPALine }>(`/api/orders/${id}/pa-lines/${encodeURIComponent(lineId)}/verify`, {
+  method: 'POST', body: JSON.stringify(body),
+})
 
 export interface PharmacyStaffIdentity { userId: string; name: string; email: string }
 

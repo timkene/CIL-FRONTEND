@@ -46,7 +46,7 @@ export function sameOrigin(request: NextRequest) {
   return false
 }
 
-export async function pharmacyUpstream(path: string, session?: string, init?: RequestInit) {
+export async function pharmacyUpstream(path: string, session?: string, init?: RequestInit, timeoutMs = 15_000) {
   const base = new URL(process.env.PHARMACY_API_URL ?? 'https://pharmacy-dispatch-api.onrender.com')
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)
   if (base.username || base.password || base.search || base.hash || base.pathname !== '/' ||
@@ -54,7 +54,7 @@ export async function pharmacyUpstream(path: string, session?: string, init?: Re
     throw new Error('Invalid Pharmacy backend configuration')
   }
   return fetch(new URL(path, base), {
-    ...init, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(15_000),
+    ...init, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
     headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(session ? { Cookie: `staff_session=${session}` } : {}) },
   })
 }

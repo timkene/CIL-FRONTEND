@@ -28,6 +28,7 @@ export type MedicationFrequency =
   | 'every month'
 
 export interface Medication {
+  lineId?: string
   procedureCode?: string
   name: string
   dosage: string
@@ -45,6 +46,7 @@ export interface Bid {
   aggregatorName: string
   unitPrice: number
   totalPrice: number
+  procedurePrices?: PharmacyProcedurePrice[] | null
   isCheapest: boolean
   submittedAt: string
 }
@@ -119,6 +121,11 @@ export interface PharmacyOrder {
   winnerId?: string
   winnerName?: string
   winnerTotalPrice?: number | null
+  quotedProcedurePrices?: PharmacyProcedurePrice[] | null
+  approvedProcedurePrices?: PharmacyProcedurePrice[] | null
+  finalProcedurePrices?: PharmacyProcedurePrice[] | null
+  medicationSubtotal?: number | null
+  overallTotal?: number | null
   fulfillmentType?: 'delivered' | 'picked_up'
   deliveryFee?: number
   biddingEndsAt?: string
@@ -128,18 +135,25 @@ export interface PharmacyOrder {
   reviewFlags?: ReviewFlags | null
   version?: number
   assignmentVersion?: number
-  directQuote?: { totalPrice: number; submittedAt?: string; aggregatorId?: string; assignmentVersion?: number } | null
+  directQuote?: { totalPrice: number; procedurePrices?: PharmacyProcedurePrice[] | null; submittedAt?: string; aggregatorId?: string; assignmentVersion?: number } | null
   priceApprovedAt?: string | null
   acceptedAt?: string | null
   fulfilledAt?: string | null
   cancelledAt?: string | null
   recalledAt?: string | null
   history?: PharmacyHistoryEvent[] | null
-  paGeneration?: { available: boolean; status: string } | null
+  paGeneration?: { available: boolean; status: string; lines?: PharmacyPALine[]; active?: boolean; interrupted?: boolean } | null
   assignmentType?: string | null
   denialComment?: string | null
   deniedBy?: { userId?: string; name?: string } | null
   deniedAt?: string | null
+}
+
+export interface PharmacyProcedurePrice { medicationLineId: string; procedureCode: string; amount: number }
+export interface PharmacyPALine {
+  lineId: string; procedureCode: string; description: string; amount: number; quantity?: number; failureKind?: string
+  status: 'pending' | 'submitting' | 'generated' | 'failed_retryable' | 'verification_required'
+  paNumber?: string | null
 }
 
 export interface SearchResult {
