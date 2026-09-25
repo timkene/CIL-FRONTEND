@@ -3,11 +3,12 @@ import { pharmacyJson, pharmacySession, pharmacyUnavailable, pharmacyUpstream, r
 
 const ACTION_FIELDS: Record<string, readonly string[]> = {
   assign: ['aggregatorId', 'expectedVersion'],
-  'direct-approve': ['expectedVersion', 'adjusted_price', 'reason'],
+  'direct-approve': ['expectedVersion', 'adjusted_price', 'procedurePrices', 'reason'],
   'direct-deny': ['expectedVersion', 'reason'], recall: ['expectedVersion', 'reason'],
-  'adjust-price': ['expectedVersion', 'totalPrice', 'reason'], cancel: ['expectedVersion', 'reason'],
+  'adjust-price': ['expectedVersion', 'totalPrice', 'procedurePrices', 'reason'], cancel: ['expectedVersion', 'reason'],
   approve: [], reject: ['comment'], 'close-bidding': [],
-  'clearline-approve': ['adjusted_price'], 'staff-confirm': [],
+  'clearline-approve': ['adjusted_price', 'procedurePrices', 'reason'], 'staff-confirm': [],
+  'generate-pa': ['expectedVersion'],
 }
 const ORDER_FIELDS = ['enrollee', 'provider', 'medications']
 
@@ -19,6 +20,8 @@ function contract(path: string[], method: string): { fields: readonly string[] }
   if (path.length === 2 && ['GET', 'POST'].includes(method)) return { fields: ORDER_FIELDS }
   if (!/^[a-fA-F0-9]{24}$/.test(path[2] ?? '')) return null
   if (path.length === 3 && ['GET', 'PUT'].includes(method)) return { fields: ORDER_FIELDS }
+  if (path.length === 6 && path[3] === 'pa-lines' && /^[a-zA-Z0-9-]{1,80}$/.test(path[4]) && path[5] === 'verify' && method === 'POST') return { fields: ['resolution', 'evidence', 'paNumber', 'confirmNoPaCreated', 'verificationMethod', 'checkedWith', 'verifiedAt'] }
+  if (path.length === 5 && path[3] === 'pa-interruption' && path[4] === 'mark-verification-required' && method === 'POST') return { fields: [] }
   if (path.length === 4 && method === 'POST' && Object.hasOwn(ACTION_FIELDS, path[3])) return { fields: ACTION_FIELDS[path[3]] }
   return null
 }
@@ -50,20 +53,26 @@ async function handle(request: NextRequest, context: { params: Promise<{ path: s
         body = JSON.stringify(parsed)
       }
     }
-    const upstream = await pharmacyUpstream('/' + path.join('/'), session, { method: request.method, body })
+    if (path[3] === 'generate-pa' && (!body || !Number.isSafeInteger(JSON.parse(body).expectedVersion) || JSON.parse(body).expectedVersion < 0)) return pharmacyJson({ detail: 'expectedVersion is required.' }, 422)
+    const upstream = await pharmacyUpstream('/' + path.join('/'), session, { method: request.method, body }, path[3] === 'generate-pa' ? 270_000 : undefined)
     if (upstream.status === 401) return unauthenticated()
-    if (upstream.status >= 500) return pharmacyUnavailable(upstream.status)
+    if (upstream.status >= 500) return path[3] === 'generate-pa'
+      ? pharmacyJson({ detail: 'PA result may be unknown. Refresh and verify this order before any retry.' }, upstream.status)
+      : pharmacyUnavailable(upstream.status)
     const data = await upstream.json()
     if (!upstream.ok) {
       const detail = typeof data?.detail === 'string' ? sanitize(data.detail.slice(0, 2000), session) : 'Please check the request and try again.'
       return pharmacyJson({ detail }, upstream.status)
     }
     if (request.method !== 'GET') {
-      if (!data || data.success !== true) return pharmacyUnavailable(502)
-      return pharmacyJson(sanitize(Object.fromEntries(Object.entries(data).filter(([key]) => ['success', 'orderId', 'status', 'version', 'assignmentVersion'].includes(key))), session), upstream.status)
+      if (!data || (!['generate-pa', 'pa-lines', 'pa-interruption'].includes(path[3]) && data.success !== true)) return pharmacyUnavailable(502)
+      return pharmacyJson(sanitize(Object.fromEntries(Object.entries(data).filter(([key]) => ['success', 'orderId', 'status', 'version', 'assignmentVersion', 'lines', 'line'].includes(key))), session), upstream.status)
     }
     return pharmacyJson(sanitize(data, session), upstream.status)
-  } catch { return pharmacyUnavailable() }
+  } catch { return path[3] === 'generate-pa'
+    ? pharmacyJson({ detail: 'PA result may be unknown. Refresh and verify this order before any retry.' }, 504)
+    : pharmacyUnavailable() }
 }
 
+export const maxDuration = 300
 export { handle as GET, handle as POST, handle as PUT }
