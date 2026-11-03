@@ -20,8 +20,11 @@ async function pharmacyFetch<T>(path: string, init?: RequestInit): Promise<T> {
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    if (res.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/pharmacy/login') {
-      window.location.assign('/pharmacy/login')
+    if (res.status === 401 && typeof window !== 'undefined') {
+      const path = window.location.pathname
+      if (path !== '/pharmacy/login' && (path === '/pharmacy' || path.startsWith('/pharmacy/'))) {
+        window.location.assign('/pharmacy/login')
+      }
     }
     throw new PharmacyApiError(
       res.status,

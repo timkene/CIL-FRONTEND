@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { clearPharmacyCookie, pharmacySession, verifyPharmacySession } from '@/lib/pharmacy-server'
 
 export async function proxy(request: NextRequest) {
-  if (request.nextUrl.pathname === '/pharmacy/login') return NextResponse.next()
+  const path = request.nextUrl.pathname
+  if (path !== '/pharmacy' && !path.startsWith('/pharmacy/')) return NextResponse.next()
+  if (path === '/pharmacy/login') return NextResponse.next()
   const session = pharmacySession(request)
   const verified = session ? await verifyPharmacySession(session) : { status: 401 }
   if (verified.status === 401) {
