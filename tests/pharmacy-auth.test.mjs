@@ -317,6 +317,27 @@ test('central browser transport uses same-origin, redirects only on 401, and nev
   }
 })
 
+test('Pharmacy 401 does not replace Clearline Analytics login on non-pharmacy modules', async () => {
+  for (const pathname of ['/mlr', '/login', '/tariff', '/admin', '/nhia-vetting', '/health-screening', '/checkin', '/aftercare', '/escalations', '/cdr', '/providers/band-mapping', '/sla']) {
+    const navigations = []
+    const h = harness({ replies: [response({ detail: 'Pharmacy staff sign-in required.' }, 401)] })
+    const api = h.load('lib/pharmacy-api.ts', { window: { location: { pathname, assign: path => navigations.push(path) } } })
+    await assert.rejects(() => api.getPharmacyOrders())
+    assert.deepEqual(navigations, [])
+  }
+})
+
+test('page protection never intercepts Clearline Analytics routes', async () => {
+  const h = harness()
+  const mod = h.load('proxy.ts')
+  for (const path of ['/', '/mlr', '/login', '/tariff', '/admin', '/nhia-vetting']) {
+    const res = await mod.proxy(h.request(path))
+    assert.equal(res.headers.get('x-middleware-next'), '1', path)
+    assert.equal(res.headers.get('location'), null, path)
+  }
+  assert.equal(h.calls.length, 0)
+})
+
 test('Pharmacy browser source has no secret, token decoding, signing or storage', () => {
   for (const file of ['lib/pharmacy-api.ts', 'app/pharmacy/login/page.tsx', 'components/pharmacy/PharmacySessionBar.tsx']) {
     const source = fs.readFileSync(file, 'utf8')

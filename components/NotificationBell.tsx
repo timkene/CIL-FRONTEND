@@ -27,7 +27,8 @@ async function fetchNotifs(): Promise<NotifItem[]> {
     }
   } catch (_) {}
 
-  try {
+  const onPharmacy = typeof window !== 'undefined' && (window.location.pathname === '/pharmacy' || window.location.pathname.startsWith('/pharmacy/'))
+  if (onPharmacy) try {
     const { orders } = await getPharmacyOrders()
     const pending = orders.filter((o) => o.status === 'pending_review').slice(0, 5)
     for (const o of pending) {
