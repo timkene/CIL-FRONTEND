@@ -74,7 +74,7 @@ export default function LoginPage() {
 
       // Redirect to first accessible module
       const isAll = modules.includes('ALL')
-      const first = MODULE_ROUTES.find(r => isAll || modules.includes(r.module))
+      const first = MODULE_ROUTES.find(r => !r.external && (isAll || modules.includes(r.module)))
       router.replace(first?.href ?? '/mlr')
 
     } catch {
