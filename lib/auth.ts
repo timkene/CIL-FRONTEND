@@ -25,7 +25,7 @@ export interface User {
   session_version: number
 }
 
-export const MODULE_ROUTES: { href: string; label: string; module: string }[] = [
+export const MODULE_ROUTES: { href: string; label: string; module: string; external?: boolean }[] = [
   { href: '/tariff',          label: 'Tariff Banding',   module: 'Tariff Banding' },
   { href: '/tariff/migration', label: 'Tariff Migration', module: 'Tariff Banding' },
   { href: '/mlr',            label: 'MLR Data',        module: 'MLR Data' },
@@ -33,7 +33,8 @@ export const MODULE_ROUTES: { href: string; label: string; module: string }[] = 
   { href: '/sla',                     label: 'SLA Generator',             module: 'SLA Generator' },
   { href: '/nhia-vetting',            label: 'NHIA Vetting',              module: 'NHIA Vetting' },
   { href: '/health-screening',        label: 'Health Screening',          module: 'Health Screening' },
-  { href: '/pharmacy',                label: 'Pharmacy',                  module: 'Pharmacy' },
+  { href: '/pharmacy',                label: 'Pharmacy Requests',          module: 'Pharmacy' },
+  { href: 'https://pharmacy-portal-delta.vercel.app/staff/login', label: 'Pharmacy Operations', module: 'Pharmacy', external: true },
   { href: '/checkin',                 label: 'Check-in Monitor',          module: 'Check-in Monitor' },
   { href: '/aftercare',               label: '24hr Aftercare',            module: 'Aftercare' },
   { href: '/escalations',             label: 'Escalations',               module: 'Escalations' },

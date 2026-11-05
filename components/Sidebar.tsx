@@ -49,18 +49,30 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
-          {visibleNav.map(({ href, label }) => {
-            const active = path.startsWith(href)
-            return (
+          {visibleNav.map(({ href, label, external }) => {
+            const active = !external && path.startsWith(href)
+            const className = `flex items-center px-3 py-2.5 rounded-lg text-sm transition-colors ${
+              active
+                ? 'bg-[#137fec]/10 text-[#137fec] font-bold'
+                : 'text-slate-600 hover:bg-[#137fec]/10 hover:text-[#137fec] font-medium'
+            }`
+            return external ? (
+              <a
+                key={href}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setOpen(false)}
+                className={className}
+              >
+                {label}
+              </a>
+            ) : (
               <Link
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
-                className={`flex items-center px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                  active
-                    ? 'bg-[#137fec]/10 text-[#137fec] font-bold'
-                    : 'text-slate-600 hover:bg-[#137fec]/10 hover:text-[#137fec] font-medium'
-                }`}
+                className={className}
               >
                 {label}
               </Link>

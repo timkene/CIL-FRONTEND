@@ -69,7 +69,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       if (moduleName && !hasModuleAccess(session, moduleName)) {
         // Redirect to first accessible route
-        const first = MODULE_ROUTES.find(r => hasModuleAccess(session, r.module))
+        const first = MODULE_ROUTES.find(r => !r.external && hasModuleAccess(session, r.module))
         router.replace(first?.href ?? '/login')
         return
       }
