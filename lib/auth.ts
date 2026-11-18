@@ -29,6 +29,7 @@ export const MODULE_ROUTES: { href: string; label: string; module: string; exter
   { href: '/tariff',          label: 'Tariff Banding',   module: 'Tariff Banding' },
   { href: '/tariff/migration', label: 'Tariff Migration', module: 'Tariff Banding' },
   { href: '/mlr',            label: 'MLR Data',        module: 'MLR Data' },
+  { href: '/analyst',        label: 'Analyst',         module: 'MLR Data' },
   { href: '/providers/band-mapping',  label: 'Enrollee Provider Mapping', module: 'Enrollee Provider Mapping' },
   { href: '/sla',                     label: 'SLA Generator',             module: 'SLA Generator' },
   { href: '/nhia-vetting',            label: 'NHIA Vetting',              module: 'NHIA Vetting' },
