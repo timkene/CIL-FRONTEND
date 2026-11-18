@@ -18,6 +18,7 @@ const PUBLIC_PATHS = ['/login', '/survey', '/pharmacy/login']
 const PATH_MODULE: Record<string, string> = {
   '/tariff':           'Tariff Banding',
   '/mlr':              'MLR Data',
+  '/analyst':          'MLR Data',
   '/providers/band-mapping': 'Enrollee Provider Mapping',
   '/sla':                    'SLA Generator',
   '/nhia-vetting':           'NHIA Vetting',
